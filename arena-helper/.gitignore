@@ -1,0 +1,10 @@
+.gradle/
+.kotlin/
+**/build/
+local.properties
+*.jks
+*.keystore
+app/src/main/assets/rus.traineddata
+tools/ru.json
+tools/en.json
+tools/tierlist.html
