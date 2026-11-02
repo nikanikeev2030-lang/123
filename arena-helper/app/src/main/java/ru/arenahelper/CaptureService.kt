@@ -32,6 +32,15 @@ class CaptureService:Service() {
  @Volatile private var generation=0
  private var lastFrame=0L
  private var width=0; private var height=0
+ private var allCards=emptyList<Card>()
+ private var hero="mage"
+ private var current=emptyList<Match?>()
+ private var currentConfirmed=false
+ private var mixed=true
+ private var lastAdded=""
+ private val picks=mutableListOf<List<Card>>()
+ private val packages=mutableMapOf<String,List<Card>>()
+ private var dialog:Dialog?=null
  private var previous=emptyList<String?>()
  private var stable=0
  override fun onBind(intent:Intent?):IBinder?=null
@@ -64,10 +73,10 @@ class CaptureService:Service() {
      val api=TessBaseAPI(); tess=api
      check(api.init(dir.parent,"rus",TessBaseAPI.OEM_LSTM_ONLY)) { "Не удалось загрузить русский OCR" }
      api.pageSegMode=TessBaseAPI.PageSegMode.PSM_SINGLE_BLOCK
-     val cls=getSharedPreferences("arena",0).getString("class","mage")!!
-     val json=Catalog.read(this).getJSONArray("cards")
-     val cards=(0 until json.length()).map { i -> val c=json.getJSONObject(i); val scores=c.getJSONObject("scores"); Card(c.getString("name"),if(scores.has(cls)) scores.getInt(cls) else null) }
-     matcher=CardMatcher(cards)
+     hero=getSharedPreferences("arena",0).getString("class","mage")!!
+     allCards=Catalog.cards(this,hero)
+     matcher=CardMatcher(allCards)
+     main.post { restoreDraft() }
      val bounds=wm.maximumWindowMetrics.bounds
      resize(bounds.width(),bounds.height())
     } catch(e:Exception) { fail(e) }
@@ -111,18 +120,112 @@ class CaptureService:Service() {
   val confirmed=stable>=2
   main.post {
    if(stopped || paused || calibrating || frameGeneration!=generation) return@post
-   val complete=confirmed && results.size == 3 && results.all { it?.card?.score!=null }
-   val best=if(complete) results.maxOf { it!!.card.score!! } else null
-   status?.text=if(complete) "HearthArena • базовый рейтинг" else if(!confirmed) "Проверяю распознавание…" else "Нет всех оценок • проверьте зоны"
-   results.forEachIndexed { i,match ->
-    val card=match?.card
-    val winner=best!=null && card?.score==best
-    val cell=cells.getOrNull(i) ?: return@forEachIndexed
-    cell.text="${i+1}. ${card?.name ?: "Не распознано"}\n${card?.score?.toString() ?: "Нет оценки"}${if(winner) " ★ ЛУЧШИЙ" else ""}"
-    cell.setTextColor(if(winner) Color.rgb(86,224,180) else Color.WHITE)
+   current=results; currentConfirmed=confirmed
+   if (confirmed) DraftEngine.inferClass(results.mapNotNull { it?.card })?.let { inferred ->
+    if (hero != inferred) { hero=inferred; getSharedPreferences("arena",0).edit().putString("class",hero).apply() }
    }
+   render()
+
   }
  }
+
+ private fun resolved(c:Card)=DraftEngine.resolve(c,hero)
+ private fun offered(c:Card):List<Card>? = if(c.legendary && picks.isEmpty()) packages[c.name]?.let { listOf(resolved(c))+it.map(::resolved) } else listOf(resolved(c))
+ private fun render() {
+  val deck=picks.flatten().map(::resolved)
+  val options=current.map { it?.card?.let(::offered) }
+  val evaluations=options.map { it?.let { cards -> DraftEngine.evaluate(cards,deck,mixed) } }
+  val complete=currentConfirmed && evaluations.size==3 && evaluations.all { it!=null }
+  val best=if(complete) evaluations.maxOf { it!!.total } else null
+  val group=current.any { it?.card?.legendary==true } && picks.isEmpty()
+  status?.text="${Heroes.name(hero)} • ${deck.size}/30 • ${if(group) "Легендарные группы: укажите +3" else if(!currentConfirmed) "Проверяю…" else "Нажмите карту после выбора"}"
+  current.forEachIndexed { i,m ->
+   val card=m?.card?.let(::resolved); val e=evaluations.getOrNull(i); val winner=best!=null && e?.total==best
+   val value=when {
+    card==null -> "Не распознано"
+    group && card.legendary && options.getOrNull(i)==null -> "Карта ${card.score ?: "?"} • +3: нажмите"
+    e==null -> "Нет рейтинга в базе"
+    e.curve!=null -> "%.1f = 70%% × %.0f + 30%% × %.0f".format(java.util.Locale.ROOT,e.total,e.strength,e.curve)
+    else -> "Сила %.1f".format(java.util.Locale.ROOT,e.total)
+   }
+   cells.getOrNull(i)?.apply { text="${i+1}. ${card?.name ?: "—"}\n$value${if(winner) " ★" else ""}";setTextColor(if(winner) Color.rgb(86,224,180) else Color.WHITE) }
+  }
+ }
+ private fun openDialog(builder:AlertDialog.Builder) {
+  dialog?.dismiss()
+  val d=builder.create(); d.window?.setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY)
+  d.setOnDismissListener { dialog=null }; dialog=d; d.show()
+ }
+ private fun chooseHero(reset:Boolean) {
+  val items=Heroes.keys.indices.sortedByDescending { Heroes.underground[it] }
+  val column=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(24,12,24,12) }
+  column.addView(TextView(this).apply { text=Heroes.source+"\nВыберите класс, предложенный игрой. Для новой арены сохранённая колода будет очищена.";setTextColor(Color.WHITE) })
+  items.forEach { i -> column.addView(Button(this).apply {
+   text="${Heroes.names[i]} — ${Heroes.underground[i]}% (Подземная)"
+   setOnClickListener {
+    hero=Heroes.keys[i];getSharedPreferences("arena",0).edit().putString("class",hero).apply()
+    if(reset) { picks.clear();packages.clear();lastAdded="";saveDraft() }
+    dialog?.dismiss();render()
+   }
+  }) }
+  openDialog(AlertDialog.Builder(this).setTitle(if(reset) "Новая арена • выбор героя" else "Герой и винрейты").setView(ScrollView(this).apply { addView(column) }).setNegativeButton("Закрыть",null))
+ }
+ private fun cardAction(index:Int) {
+  val c=current.getOrNull(index)?.card ?: return
+  if(paused || calibrating || !currentConfirmed) { Toast.makeText(this,"Дождитесь подтверждения OCR",Toast.LENGTH_SHORT).show(); return }
+  if(c.legendary && picks.isEmpty()) { editPackage(c);return }
+  openDialog(AlertDialog.Builder(this).setTitle(c.name).setMessage("Добавить выбранную карту в учёт колоды? В самой игре карту выбирайте отдельно.")
+   .setPositiveButton("Выбрал в игре") { _,_ -> record(listOf(resolved(c))) }.setNegativeButton("Отмена",null))
+ }
+ private fun editPackage(legend:Card) {
+  val column=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(24,12,24,12) }
+  column.addView(TextView(this).apply { text="Укажите три карты, которые игра добавит вместе с легендарной. Повторы разрешены. Оценка группы — средняя сила четырёх карт." })
+  val names=allCards.map { it.name }.distinct().sorted()
+  val fields=(0..2).map { i -> AutoCompleteTextView(this).apply {
+   hint="Дополнительная карта ${i+1}";threshold=1;setSingleLine();setAdapter(ArrayAdapter(this@CaptureService,android.R.layout.simple_dropdown_item_1line,names))
+   setText(packages[legend.name]?.getOrNull(i)?.name.orEmpty());column.addView(this)
+  } }
+  fun read():List<Card>? {
+   val selected=fields.map { f -> allCards.firstOrNull { CardMatcher.normalize(it.name)==CardMatcher.normalize(f.text.toString()) } }
+   if(selected.any { it==null }) { Toast.makeText(this,"Выберите все три точных названия из списка",Toast.LENGTH_LONG).show();return null }
+   return selected.filterNotNull()
+  }
+  column.addView(Button(this).apply { text="Сохранить группу и сравнить";setOnClickListener { read()?.let { packages[legend.name]=it;dialog?.dismiss();render() } } })
+  column.addView(Button(this).apply { text="Эту группу выбрал в игре (+4)";setOnClickListener { read()?.let { packages[legend.name]=it;dialog?.dismiss();record(listOf(resolved(legend))+it.map(::resolved)) } } })
+  openDialog(AlertDialog.Builder(this).setTitle(legend.name+" + 3 карты").setView(ScrollView(this).apply { addView(column) }).setNegativeButton("Отмена",null))
+ }
+ private fun record(cards:List<Card>) {
+  val fingerprint=current.joinToString("|"){it?.card?.name.orEmpty()}
+  if(fingerprint==lastAdded || picks.flatten().size+cards.size>30) { Toast.makeText(this,"Этот выбор уже записан или колода заполнена",Toast.LENGTH_LONG).show();return }
+  picks.add(cards);lastAdded=fingerprint;saveDraft();render()
+ }
+ private fun saveDraft() {
+  val data=org.json.JSONArray();picks.forEach { group -> data.put(org.json.JSONArray(group.map { it.name })) }
+  getSharedPreferences("arena",0).edit().putString("draft",data.toString()).putString("lastAdded",lastAdded).apply()
+ }
+ private fun restoreDraft() {
+  runCatching {
+   val pref=getSharedPreferences("arena",0); val data=org.json.JSONArray(pref.getString("draft","[]"))
+   picks.clear();for(i in 0 until data.length()) { val group=data.getJSONArray(i);val cards=(0 until group.length()).mapNotNull { j -> allCards.firstOrNull { it.name==group.getString(j) } };if(cards.size==group.length())picks.add(cards) }
+   lastAdded=pref.getString("lastAdded","").orEmpty()
+  };render()
+ }
+ private fun addManual() {
+  val field=AutoCompleteTextView(this).apply { threshold=1;hint="Название ранее выбранной карты";setAdapter(ArrayAdapter(this@CaptureService,android.R.layout.simple_dropdown_item_1line,allCards.map { it.name }.distinct().sorted())) }
+  val column=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(24,12,24,12);addView(field) }
+  column.addView(Button(this).apply { text="Добавить одну копию";setOnClickListener {
+   val c=allCards.firstOrNull { CardMatcher.normalize(it.name)==CardMatcher.normalize(field.text.toString()) }
+   if(c==null || picks.flatten().size>=30) Toast.makeText(this@CaptureService,"Выберите название из списка; максимум 30 карт",Toast.LENGTH_SHORT).show()
+   else { picks.add(listOf(c));saveDraft();dialog?.dismiss();render() }
+  } })
+  openDialog(AlertDialog.Builder(this).setTitle("Восстановить колоду").setView(column).setNegativeButton("Отмена",null))
+ }
+ private fun showDeck() {
+  val deck=picks.flatten();val counts=IntArray(7);deck.forEach { c -> c.cost?.let { counts[DraftEngine.bucket(it)]++ } }
+  val text="Манакривая (0–1/2/3/4/5/6/7+): ${counts.joinToString(" / ")}\nЦель: ${DraftEngine.target.joinToString(" / ")}\n70/30 — эвристика. Без записанной колоды используется только сила.\n\n"+deck.mapIndexed { i,c -> "${i+1}. ${c.name} (${c.cost ?: "?"})" }.joinToString("\n")
+  openDialog(AlertDialog.Builder(this).setTitle("Колода ${deck.size}/30").setMessage(text).setNegativeButton("Закрыть",null).setPositiveButton("Добавить вручную") { _,_ -> addManual() }.setNeutralButton("Отменить последний") { _,_ -> if(picks.isNotEmpty())picks.removeAt(picks.lastIndex);lastAdded="";saveDraft();render() })
+ }
+
  private fun params(w:Int,h:Int,gravity:Int)=WindowManager.LayoutParams(w,h,WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,PixelFormat.TRANSLUCENT).apply {
   this.gravity=gravity; layoutInDisplayCutoutMode=WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS; setFitInsetsTypes(0)
  }
@@ -132,21 +235,25 @@ class CaptureService:Service() {
   status=TextView(this).apply { text="Загрузка русского OCR…"; setTextColor(Color.WHITE); textSize=12f; maxLines=2 }
   bar.addView(status,LinearLayout.LayoutParams(0,-2,1f))
   fun control(label:String,action:(Button)->Unit) { bar.addView(Button(this).apply { text=label; textSize=11f; minWidth=0; minimumWidth=0; setOnClickListener { action(this) } },LinearLayout.LayoutParams(-2,40.dp)) }
+  control("Герой") { chooseHero(false) }
+  control("Новая") { chooseHero(true) }
+  control("Колода") { showDeck() }
+  control("70/30") { b -> mixed=!mixed; b.text=if(mixed) "70/30" else "Сила"; render() }
   control("Пауза") { b -> paused=!paused; generation++; b.text=if(paused) "Пуск" else "Пауза"; worker.post { previous=emptyList(); stable=0 }; clear(if(paused) "Приостановлено" else "Распознавание…") }
   control("Зоны") { calibrate() }
   control("×") { stopSelf() }
   root.addView(bar)
   val row=LinearLayout(this)
-  cells=(0..2).map { TextView(this).apply { text="${it+1}. —"; textSize=13f; setTextColor(Color.WHITE); setPadding(6,2,6,2); row.addView(this,LinearLayout.LayoutParams(0,-2,1f)) } }
+  cells=(0..2).map { TextView(this).apply { text="${it+1}. —"; textSize=13f; setTextColor(Color.WHITE); setPadding(6,2,6,2); val index=it; setOnClickListener { cardAction(index) }; row.addView(this,LinearLayout.LayoutParams(0,-2,1f)) } }
   root.addView(row); panel=root
-  wm.addView(root,params(-1,-2,Gravity.BOTTOM))
+  wm.addView(root,params(-1,-2,Gravity.TOP))
  }
  private fun calibrate() {
   if(calibrating) return
   calibrating=true; generation++; panel?.visibility=View.GONE
   calibration=CalibrationView(this) {
    calibration?.let { wm.removeView(it) }; calibration=null; calibrating=false
-   generation++; worker.post { previous=emptyList(); stable=0 }; panel?.visibility=View.VISIBLE; clear("Зоны сохранены • распознавание…")
+   generation++; worker.post { previous=emptyList(); stable=0 }; panel?.visibility=View.VISIBLE; clear("Распознавание…")
   }
   wm.addView(calibration,params(-1,-1,Gravity.TOP or Gravity.START))
  }
@@ -154,6 +261,7 @@ class CaptureService:Service() {
  private val Int.dp get()=(this*resources.displayMetrics.density).toInt()
  override fun onDestroy() {
   stopped=true
+  dialog?.dismiss(); dialog=null
   calibration?.let { runCatching { wm.removeView(it) } }; panel?.let { runCatching { wm.removeView(it) } }
   worker.post { display?.release(); display=null; reader?.close(); reader=null; projection?.stop(); projection=null; tess?.recycle(); tess=null; thread.quitSafely() }
   stopForeground(STOP_FOREGROUND_REMOVE); super.onDestroy()

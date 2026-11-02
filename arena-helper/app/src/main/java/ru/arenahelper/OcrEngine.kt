@@ -10,7 +10,7 @@ object OcrEngine {
         crop.getPixels(pixels, 0, crop.width, 0, 0, crop.width, crop.height)
         val candidates = mutableListOf<Match>()
         // Hearthstone's name ribbon is curved; straighten it before text layout detection.
-        val passes = listOf(140 to 0.20f, 140 to 0.15f, 160 to 0.20f, 120 to 0.20f, 180 to 0f)
+        val passes = listOf(140 to 0.20f, 140 to 0.15f, 160 to 0.20f, 120 to 0.20f, 140 to 0f, 180 to 0f)
         for ((threshold, curve) in passes) {
             val data = TitlePixels.prepare(pixels, crop.width, crop.height, threshold, curve)
             val binary = Bitmap.createBitmap(data, crop.width, crop.height, Bitmap.Config.ARGB_8888)

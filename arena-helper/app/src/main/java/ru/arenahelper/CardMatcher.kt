@@ -3,7 +3,7 @@ package ru.arenahelper
 import java.util.Locale
 import kotlin.math.abs
 
-data class Card(val name: String, val score: Int?)
+data class Card(val name: String, val score: Int?, val cost: Int? = null, val cardClass: String = "neutral", val legendary: Boolean = false, val ratings: Map<String,Int> = emptyMap())
 data class Match(val card: Card, val confidence: Double)
 
 /** No unchecked access to OCR lists: blank and one-line OCR are normal inputs. */

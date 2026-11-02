@@ -10,7 +10,11 @@ for cls,body in re.findall(r'<section class="tab tierlist [^"]+" id="([^"]+)">(.
   name=html.unescape(re.sub('<.*?>','',name)).strip().split('\n')[0]
   card=ru_by_id.get(cid) or ru_by_id.get(en_by_name.get(name,{}).get('id'))
   if card:scores.setdefault(card['name'],{})[cls]=int(value)
-cards=[{'name':n,'scores':scores.get(n,{})} for n in sorted({x['name'] for x in ru if x.get('type') in ('MINION','SPELL','WEAPON','LOCATION')})]
+by_name={x['name']:x for x in ru}
+cards=[]
+for n in sorted({x['name'] for x in ru if x.get('type') in ('MINION','SPELL','WEAPON','LOCATION')}):
+ a=by_name[n]
+ cards.append({'name':n,'scores':scores.get(n,{}),'cost':a.get('cost'),'cardClass':a.get('cardClass','NEUTRAL').lower().replace('deathknight','death-knight').replace('demonhunter','demon-hunter'),'legendary':a.get('rarity')=='LEGENDARY'})
 assert len(scores)>300
 obj={'source':'https://www.heartharena.com/tierlist','namesSource':'https://hearthstonejson.com','retrievedAt':datetime.datetime.now(datetime.timezone.utc).isoformat(),'cards':cards}
 (root/'app/src/main/assets/cards.bin').write_bytes(gzip.compress(json.dumps(obj,ensure_ascii=False,separators=(',',':')).encode(),mtime=0))
