@@ -13,5 +13,5 @@ for cls,body in re.findall(r'<section class="tab tierlist [^"]+" id="([^"]+)">(.
 cards=[{'name':n,'scores':scores.get(n,{})} for n in sorted({x['name'] for x in ru if x.get('type') in ('MINION','SPELL','WEAPON','LOCATION')})]
 assert len(scores)>300
 obj={'source':'https://www.heartharena.com/tierlist','namesSource':'https://hearthstonejson.com','retrievedAt':datetime.datetime.now(datetime.timezone.utc).isoformat(),'cards':cards}
-(root/'app/src/main/assets/cards.json.gz').write_bytes(gzip.compress(json.dumps(obj,ensure_ascii=False,separators=(',',':')).encode(),mtime=0))
+(root/'app/src/main/assets/cards.bin').write_bytes(gzip.compress(json.dumps(obj,ensure_ascii=False,separators=(',',':')).encode(),mtime=0))
 print('Names:',len(cards),'rated:',len(scores),'class scores:',sum(map(len,scores.values())))

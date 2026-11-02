@@ -1,7 +1,7 @@
 import gzip,json,struct,sys,zipfile
 with zipfile.ZipFile(sys.argv[1]) as z:
  assert len(z.read('assets/rus.traineddata'))>1000000
- cards=json.loads(gzip.decompress(z.read('assets/cards.json.gz')))['cards']
+ cards=json.loads(gzip.decompress(z.read('assets/cards.bin')))['cards']
  assert len(cards)>5000 and sum(bool(c['scores']) for c in cards)>300
  libs=[n for n in z.namelist() if n.startswith('lib/') and n.endswith('.so')]
  assert libs and all(n.startswith('lib/arm64-v8a/') for n in libs)
