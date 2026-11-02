@@ -40,7 +40,7 @@ class CaptureService:Service() {
  private var lastAdded=""
  private val picks=mutableListOf<List<Card>>()
  private val packages=mutableMapOf<String,List<Card>>()
- private var dialog:Dialog?=null
+ @Volatile private var dialog:Dialog?=null
  private var previous=emptyList<String?>()
  private var stable=0
  override fun onBind(intent:Intent?):IBinder?=null
@@ -94,7 +94,7 @@ class CaptureService:Service() {
    val image=try { r.acquireLatestImage() } catch(_:Exception) { null } ?: return@setOnImageAvailableListener
    try {
     val now=SystemClock.elapsedRealtime()
-    if(stopped || paused || calibrating || tess==null || matcher==null || now-lastFrame<1600) return@setOnImageAvailableListener
+    if(stopped || paused || calibrating || dialog!=null || tess==null || matcher==null || now-lastFrame<1600) return@setOnImageAvailableListener
     lastFrame=now
     if(w<h) { main.post { clear("Поверните телефон горизонтально") }; return@setOnImageAvailableListener }
     val p=image.planes.firstOrNull() ?: return@setOnImageAvailableListener
@@ -119,7 +119,7 @@ class CaptureService:Service() {
   stable=if(names==previous) stable+1 else 1; previous=names
   val confirmed=stable>=2
   main.post {
-   if(stopped || paused || calibrating || frameGeneration!=generation) return@post
+   if(stopped || paused || calibrating || dialog!=null || frameGeneration!=generation) return@post
    current=results; currentConfirmed=confirmed
    if (confirmed) DraftEngine.inferClass(results.mapNotNull { it?.card })?.let { inferred ->
     if (hero != inferred) { hero=inferred; getSharedPreferences("arena",0).edit().putString("class",hero).apply() }
@@ -154,7 +154,7 @@ class CaptureService:Service() {
  private fun openDialog(builder:AlertDialog.Builder) {
   dialog?.dismiss()
   val d=builder.create(); d.window?.setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY)
-  d.setOnDismissListener { dialog=null }; dialog=d; d.show()
+  d.setOnDismissListener { if(dialog===d) dialog=null }; dialog=d; d.show()
  }
  private fun chooseHero(reset:Boolean) {
   val items=Heroes.keys.indices.sortedByDescending { Heroes.underground[it] }
