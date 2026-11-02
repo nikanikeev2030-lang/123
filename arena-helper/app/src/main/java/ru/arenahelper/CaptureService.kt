@@ -88,11 +88,11 @@ class CaptureService:Service() {
     if(stopped || paused || calibrating || tess==null || matcher==null || now-lastFrame<1600) return@setOnImageAvailableListener
     lastFrame=now
     if(w<h) { main.post { clear("Поверните телефон горизонтально") }; return@setOnImageAvailableListener }
-    val p=image.planes[0]
-    val padded=Bitmap.createBitmap(p.rowStride/p.pixelStride,h,Bitmap.Config.ARGB_8888)
-    padded.copyPixelsFromBuffer(p.buffer)
-    try { recognize(padded,w,h) } finally { padded.recycle() }
-   } catch(e:Exception) { main.post { clear("Ошибка OCR: ${e.message?.take(60)}") } }
+    val p=image.planes.firstOrNull() ?: return@setOnImageAvailableListener
+    val pixels=FramePixels.decode(p.buffer, image.width, image.height, p.rowStride, p.pixelStride) ?: return@setOnImageAvailableListener
+    val padded=Bitmap.createBitmap(pixels,image.width,image.height,Bitmap.Config.ARGB_8888)
+    try { recognize(padded,image.width,image.height) } finally { padded.recycle() }
+   } catch(e:Exception) { android.util.Log.e("ArenaHelper", "Frame recognition failed", e); main.post { clear("Не удалось прочитать кадр • повторяю") } }
    finally { image.close() }
   },worker)
   if(display==null) display=projection?.createVirtualDisplay("ArenaCapture",w,h,resources.displayMetrics.densityDpi,DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,next.surface,null,worker)
@@ -100,30 +100,26 @@ class CaptureService:Service() {
  }
  private fun recognize(bitmap:Bitmap,w:Int,h:Int) {
   val frameGeneration=generation
-  val results=Regions.load(this).map { r ->
+  val results=Regions.load(this,w,h).map { r ->
    val x=(r.left*w).toInt().coerceIn(0,w-1); val y=(r.top*h).toInt().coerceIn(0,h-1)
    val cw=(r.width()*w).toInt().coerceIn(1,w-x); val ch=(r.height()*h).toInt().coerceIn(1,h-y)
    val crop=Bitmap.createBitmap(bitmap,x,y,cw,ch)
-   val scaled=Bitmap.createScaledBitmap(crop,maxOf(cw,600),(ch*maxOf(cw,600).toFloat()/cw).toInt().coerceAtLeast(1),true)
-   try {
-    tess!!.setImage(scaled)
-    val raw=tess!!.utF8Text ?: ""
-    if(tess!!.meanConfidence()<40) null else matcher!!.match(raw)
-   } finally { tess!!.clear(); if(scaled!==crop) scaled.recycle(); crop.recycle() }
+   try { OcrEngine.recognize(tess!!,crop,matcher!!) } finally { crop.recycle() }
   }
   val names=results.map { it?.card?.name }
   stable=if(names==previous) stable+1 else 1; previous=names
   val confirmed=stable>=2
   main.post {
    if(stopped || paused || calibrating || frameGeneration!=generation) return@post
-   val complete=confirmed && results.all { it?.card?.score!=null }
+   val complete=confirmed && results.size == 3 && results.all { it?.card?.score!=null }
    val best=if(complete) results.maxOf { it!!.card.score!! } else null
    status?.text=if(complete) "HearthArena • базовый рейтинг" else if(!confirmed) "Проверяю распознавание…" else "Нет всех оценок • проверьте зоны"
    results.forEachIndexed { i,match ->
     val card=match?.card
     val winner=best!=null && card?.score==best
-    cells[i].text="${i+1}. ${card?.name ?: "Не распознано"}\n${card?.score?.toString() ?: "Нет оценки"}${if(winner) " ★ ЛУЧШИЙ" else ""}"
-    cells[i].setTextColor(if(winner) Color.rgb(86,224,180) else Color.WHITE)
+    val cell=cells.getOrNull(i) ?: return@forEachIndexed
+    cell.text="${i+1}. ${card?.name ?: "Не распознано"}\n${card?.score?.toString() ?: "Нет оценки"}${if(winner) " ★ ЛУЧШИЙ" else ""}"
+    cell.setTextColor(if(winner) Color.rgb(86,224,180) else Color.WHITE)
    }
   }
  }
@@ -133,7 +129,7 @@ class CaptureService:Service() {
  private fun showPanel() {
   val root=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(12,4,12,8); setBackgroundColor(0xED102332.toInt()) }
   val bar=LinearLayout(this)
-  status=TextView(this).apply { text="Загрузка русского OCR…"; setTextColor(Color.WHITE); textSize=12f }
+  status=TextView(this).apply { text="Загрузка русского OCR…"; setTextColor(Color.WHITE); textSize=12f; maxLines=2 }
   bar.addView(status,LinearLayout.LayoutParams(0,-2,1f))
   fun control(label:String,action:(Button)->Unit) { bar.addView(Button(this).apply { text=label; textSize=11f; minWidth=0; minimumWidth=0; setOnClickListener { action(this) } },LinearLayout.LayoutParams(-2,40.dp)) }
   control("Пауза") { b -> paused=!paused; generation++; b.text=if(paused) "Пуск" else "Пауза"; worker.post { previous=emptyList(); stable=0 }; clear(if(paused) "Приостановлено" else "Распознавание…") }

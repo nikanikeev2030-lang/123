@@ -18,7 +18,7 @@ class MainActivity : Activity() {
   val column=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(24,40,24,40) }
   fun text(value:String,size:Float=16f) { column.addView(TextView(this).apply { text=value; textSize=size; setTextColor(Color.WHITE); setPadding(0,12,0,12) }) }
   fun button(value:String,action:()->Unit) { column.addView(Button(this).apply { text=value; setOnClickListener { action() } }) }
-  text("ARENA HELPER RU",28f)
+  text("ARENA HELPER RU 1.0.5",28f)
   text("Русский OCR • офлайн • три карты",18f)
   text("1. Выберите класс героя")
   column.addView(Spinner(this).apply {
@@ -36,7 +36,7 @@ class MainActivity : Activity() {
    else launchCapture()
   }
   button("Остановить") { stopService(Intent(this,CaptureService::class.java)) }
-  text("Откройте выбор карт Арены горизонтально. Нажмите «Зоны» в оверлее: обведите только названия трёх карт, слева направо. Затем нажмите «Готово».")
+  text("Откройте выбор карт Арены горизонтально. Рамки уже настроены для стандартного экрана игры. Если название не распознаётся, нажмите «Зоны»: подправьте рамки или нажмите «Сброс», затем «Готово».")
   text("Кадры обрабатываются на телефоне, не сохраняются и не передаются в сеть. Захват нужно подтверждать при каждом запуске.")
   val catalog=Catalog.read(this)
   text("Рейтинги: HearthArena, снимок ${catalog.getString("retrievedAt").take(10)}. Базовые оценки для выбранного класса, без синергии колоды. Для неизвестных карт оценки нет. После смены класса перезапустите помощник.",14f)
