@@ -18,7 +18,7 @@ object OcrEngine {
    val binary=Bitmap.createBitmap(TitlePixels.prepare(pixels,crop.width,crop.height,threshold,curve),crop.width,crop.height,Bitmap.Config.ARGB_8888)
    val scaled=Bitmap.createScaledBitmap(binary,(crop.width*4).coerceIn(600,1600),(crop.height.toLong()*(crop.width*4).coerceIn(600,1600)/crop.width).toInt().coerceAtLeast(1),true)
    try {
-    api.pageSegMode=if(curve>0)7 else 6;api.setImage(scaled)
+    api.pageSegMode=if(curve>0) TessBaseAPI.PageSegMode.PSM_SINGLE_LINE else TessBaseAPI.PageSegMode.PSM_SINGLE_BLOCK;api.setImage(scaled)
     val m=accept(api.utF8Text.orEmpty(),false)
     if(m!=null && m.confidence>=.999)return m
    } finally {api.clear();if(scaled!==binary)scaled.recycle();binary.recycle()}
@@ -39,7 +39,7 @@ object OcrEngine {
     val binary=Bitmap.createBitmap(out,w,h,Bitmap.Config.ARGB_8888)
     val padded=Bitmap.createBitmap(w+40,h+40,Bitmap.Config.ARGB_8888)
     Canvas(padded).apply {drawColor(Color.WHITE);drawBitmap(binary,20f,20f,null)}
-    try {api.pageSegMode=7;api.setImage(padded);accept(api.utF8Text.orEmpty(),true)}finally{api.clear();padded.recycle();binary.recycle()}
+    try {api.pageSegMode=TessBaseAPI.PageSegMode.PSM_SINGLE_LINE;api.setImage(padded);accept(api.utF8Text.orEmpty(),true)}finally{api.clear();padded.recycle();binary.recycle()}
    }
   }finally{up.recycle()}
   val ranked=candidates.values.filter { it.maxOf {m->m.confidence}>=.82 || it.size>=2 }.map {it.maxBy {m->m.confidence}}.sortedByDescending {it.confidence}

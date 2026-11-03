@@ -120,7 +120,7 @@ public final class CaptureService extends Service {
         loadDeck();
         this.thread.start();
         this.worker = new Handler(this.thread.getLooper());
-        ((NotificationManager) getSystemService(NotificationManager.class)).createNotificationChannel(new NotificationChannel("capture", "Захват Арены", 2));
+        ((NotificationManager) getSystemService(NotificationManager.class)).createNotificationChannel(new NotificationChannel("capture", "Захват Арены", NotificationManager.IMPORTANCE_LOW));
     }
 
     @Override // android.app.Service
@@ -131,7 +131,7 @@ public final class CaptureService extends Service {
             Intent data=intent==null?null:(Build.VERSION.SDK_INT>=33?intent.getParcelableExtra("data",Intent.class):intent.getParcelableExtra("data"));
             if(data==null)throw new IllegalStateException("Нет разрешения на захват");
             PendingIntent stop=PendingIntent.getService(this,1,new Intent(this,CaptureService.class).setAction("STOP"),PendingIntent.FLAG_IMMUTABLE);
-            startForeground(1,new Notification.Builder(this,"capture").setContentTitle("Arena Helper RU").setContentText("Локальное распознавание экрана включено").setSmallIcon(android.R.drawable.ic_menu_view).addAction(new Notification.Action.Builder((Icon)null,"Остановить",stop).build()).setOngoing(true).build(),32);
+            startForeground(1,new Notification.Builder(this,"capture").setContentTitle("Arena Helper RU").setContentText("Локальное распознавание экрана включено").setSmallIcon(android.R.drawable.ic_menu_view).addAction(new Notification.Action.Builder((Icon)null,"Остановить",stop).build()).setOngoing(true).build(),android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION);
             projection=getSystemService(MediaProjectionManager.class).getMediaProjection(intent.getIntExtra("resultCode",0),data);
             if(projection==null)throw new IllegalStateException("MediaProjection не получен");
             projection.registerCallback(new MediaProjection.Callback(){
@@ -188,10 +188,10 @@ public final class CaptureService extends Service {
                 }
             }
             this.tess = new TessBaseAPI();
-            if (!this.tess.init(file.getParent(), "rus", 1)) {
+            if (!this.tess.init(file.getParent(), "rus", TessBaseAPI.OEM_LSTM_ONLY)) {
                 throw new IllegalStateException("Не удалось загрузить русский OCR");
             }
-            this.tess.setPageSegMode(6);
+            this.tess.setPageSegMode(TessBaseAPI.PageSegMode.PSM_SINGLE_BLOCK);
             this.catalog = new DraftCatalog(this);
             this.matcher = new CardMatcher(this.catalog.matcherCards());
             this.heroOcr = new HeroOcr(this.catalog);
@@ -243,7 +243,7 @@ public final class CaptureService extends Service {
         if (this.reader != null) {
             this.reader.close();
         }
-        ImageReader imageReaderNewInstance = ImageReader.newInstance(i, i2, 1, 2);
+        ImageReader imageReaderNewInstance = ImageReader.newInstance(i, i2, android.graphics.PixelFormat.RGBA_8888, 2);
         this.reader = imageReaderNewInstance;
         imageReaderNewInstance.setOnImageAvailableListener(new ImageReader.OnImageAvailableListener() { // from class: ru.arenahelper.CaptureService$$ExternalSyntheticLambda11
             @Override // android.media.ImageReader.OnImageAvailableListener
@@ -452,7 +452,7 @@ public final class CaptureService extends Service {
         if (i2 >= 0) {
             syncDeckCount(i2);
         }
-        Toast.makeText(this, "Автоматически добавлено: " + details.name, 0).show();
+        Toast.makeText(this, "Автоматически добавлено: " + details.name, Toast.LENGTH_SHORT).show();
     }
 
     private void resetMotion() {
@@ -558,7 +558,7 @@ public final class CaptureService extends Service {
             for(int threshold:new int[]{200,180}){
                 Bitmap binary=Bitmap.createBitmap(TitlePixels.INSTANCE.prepare(pixels,w,h,threshold,0),w,h,Bitmap.Config.ARGB_8888);
                 Bitmap scaled=Bitmap.createScaledBitmap(binary,w*3,h*3,true);
-                try{tess.setPageSegMode(6);tess.setImage(scaled);String text=tess.getUTF8Text();
+                try{tess.setPageSegMode(TessBaseAPI.PageSegMode.PSM_SINGLE_BLOCK);tess.setImage(scaled);String text=tess.getUTF8Text();
                     if(text!=null){Matcher m=Pattern.compile("(\\d{1,2})\\s*/\\s*30").matcher(text);if(m.find()){int n=Integer.parseInt(m.group(1));if(n>=0&&n<=30)return n;}}
                 }finally{tess.clear();if(scaled!=binary)scaled.recycle();binary.recycle();}
             }
@@ -625,7 +625,7 @@ public final class CaptureService extends Service {
 
     private WindowManager.LayoutParams params(int i, int i2, int i3) {
         WindowManager.LayoutParams layoutParams = new WindowManager.LayoutParams(i, i2, 2038, 8, -3);
-        layoutParams.gravity = 8388611 | i3;
+        layoutParams.gravity = android.view.Gravity.START | i3;
         return layoutParams;
     }
 
@@ -636,11 +636,11 @@ public final class CaptureService extends Service {
         this.status = new TextView(this);
         this.status.setText("Загрузка локальной базы…");
         this.panel = new LinearLayout(this);
-        this.panel.setOrientation(1);
+        this.panel.setOrientation(LinearLayout.VERTICAL);
         this.panel.setPadding(dp(8), dp(4), dp(8), dp(7));
         this.panel.setBackgroundColor(-267379414);
         LinearLayout linearLayout = new LinearLayout(this);
-        linearLayout.setOrientation(0);
+        linearLayout.setOrientation(LinearLayout.HORIZONTAL);
         this.panel.addView(linearLayout, new LinearLayout.LayoutParams(-1, -2));
         int i = 0;
         while (i < 3) {
@@ -670,7 +670,7 @@ public final class CaptureService extends Service {
         this.wm.addView(this.panel, params(-1, -2, 48));
         syncPanelHeight();
         this.controls = new LinearLayout(this);
-        this.controls.setOrientation(1);
+        this.controls.setOrientation(LinearLayout.VERTICAL);
         this.controls.setPadding(dp(4), dp(4), dp(4), dp(4));
         this.controls.setBackgroundColor(-535814870);
         this.deckLabel = new TextView(this);
@@ -789,9 +789,9 @@ public final class CaptureService extends Service {
         }
         this.calibrating = true;
         this.generation++;
-        this.panel.setVisibility(8);
+        this.panel.setVisibility(View.GONE);
         if (this.controls != null) {
-            this.controls.setVisibility(8);
+            this.controls.setVisibility(View.GONE);
         }
         this.calibration = new CalibrationView(this, new Function0() { // from class: ru.arenahelper.CaptureService$$ExternalSyntheticLambda9
             @Override // kotlin.jvm.functions.Function0
@@ -826,9 +826,9 @@ public final class CaptureService extends Service {
         this.generation++;
         this.previousKey = "";
         this.stable = 0;
-        this.panel.setVisibility(0);
+        this.panel.setVisibility(View.VISIBLE);
         if (this.controls != null) {
-            this.controls.setVisibility(0);
+            this.controls.setVisibility(View.VISIBLE);
         }
         this.status.setText("Зоны сохранены");
     }
@@ -973,7 +973,7 @@ public final class CaptureService extends Service {
             this.prefs.edit().putString("class", classStat.id).apply();
             resetDeck();
             this.status.setText("Выбран класс: " + classStat.label + " • колода 0/30");
-            Toast.makeText(this, String.valueOf(classStat.label) + " выбран", 0).show();
+            Toast.makeText(this, String.valueOf(classStat.label) + " выбран", Toast.LENGTH_SHORT).show();
             return;
         }
         if (i >= this.currentMatches.size() || (match = this.currentMatches.get(i)) == null || (details = this.catalog.details(match.getCard().getName())) == null) {
@@ -985,7 +985,7 @@ public final class CaptureService extends Service {
         this.trackedKey = "";
         boolean z = this.currentFirst[i];
         addPick(details, z);
-        Toast.makeText(this, z ? "Добавлен пакет: 4 карты" : "Добавлено вручную: " + details.name, 0).show();
+        Toast.makeText(this, z ? "Добавлен пакет: 4 карты" : "Добавлено вручную: " + details.name, Toast.LENGTH_SHORT).show();
         renderCards(new ArrayList(this.currentMatches));
     }
 
@@ -1076,7 +1076,7 @@ public final class CaptureService extends Service {
         if (this.status != null) {
             this.status.setText(str);
         }
-        Toast.makeText(this, str, 1).show();
+        Toast.makeText(this, str, Toast.LENGTH_LONG).show();
     }
 
     @Override // android.app.Service

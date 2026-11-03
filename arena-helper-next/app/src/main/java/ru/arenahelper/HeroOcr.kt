@@ -11,7 +11,7 @@ class HeroOcr(private val catalog:DraftCatalog) {
    for(threshold in listOf(150,190)) {
     val binary=Bitmap.createBitmap(TitlePixels.prepare(pixels,w,h,threshold,0f),w,h,Bitmap.Config.ARGB_8888)
     try {
-     api.pageSegMode=11;api.setImage(binary)
+     api.pageSegMode=TessBaseAPI.PageSegMode.PSM_SPARSE_TEXT;api.setImage(binary)
      val lines=api.utF8Text.orEmpty().lines();val pieces=lines+lines.zipWithNext { a,b -> "$a $b" }
      for(line in pieces) {
       val n=TextNormalizer.normalize(line);if(n.length !in 3..45)continue

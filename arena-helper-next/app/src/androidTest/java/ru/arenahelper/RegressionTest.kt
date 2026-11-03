@@ -17,7 +17,7 @@ class RegressionTest {
   val catalog=DraftCatalog(ctx);val matcher=CardMatcher(catalog.matcherCards())
   val dir=File(ctx.cacheDir,"test-ocr/tessdata").apply{mkdirs()}
   ctx.assets.open("rus.traineddata").use{input->File(dir,"rus.traineddata").outputStream().use{input.copyTo(it)}}
-  val api=TessBaseAPI();assertTrue(api.init(dir.parent,"rus",1))
+  val api=TessBaseAPI();assertTrue(api.init(dir.parent,"rus",TessBaseAPI.OEM_LSTM_ONLY))
   try {
    for(name in listOf("Мгновенная мультивселенная","Первозданная смотрительница","Темпоральный путешественник")){
     assertNotNull(catalog.details(name));assertNotNull(catalog.score(name,"shaman"))
@@ -39,12 +39,20 @@ class RegressionTest {
   assertTrue(runCatching{DatabaseUpdater.requireRegular(JSONObject("{\"selected_params\":[\"ArenaGameTypeFilter.BGT_UNDERGROUND_ARENA\"]}"))}.isFailure)
   val fake=java.io.ByteArrayInputStream(ByteArray(20));assertTrue(runCatching{DatabaseUpdater.readLimited(fake,10)}.isFailure)
  }
- @Test fun liveRotationDownloadValidatesWithoutReplacingInstalledCatalog() {
-  val downloaded=DatabaseUpdater.download()
-  Catalog.validate(downloaded)
-  assertTrue(downloaded.getJSONArray("cards").length()>=800)
-  assertEquals("REGULAR",downloaded.getString("arenaMode"))
-  android.util.Log.i("ArenaUpdateTest","Live rotation: cards=${downloaded.getJSONArray("cards").length()}, groups=${downloaded.getJSONArray("packages").length()}, heroes=${downloaded.getJSONArray("classStats").length()}, warnings=${downloaded.optString("updateWarnings")}")
+ @Test fun liveRotationDownloadWritesValidatedCatalog() {
+  val ctx=InstrumentationRegistry.getInstrumentation().targetContext
+  val finished=java.util.concurrent.CountDownLatch(1)
+  val success=java.util.concurrent.atomic.AtomicBoolean(false)
+  val message=java.util.concurrent.atomic.AtomicReference("")
+  val file=File(ctx.filesDir,"catalog-update.bin")
+  try {
+   assertTrue(DatabaseUpdater.update(ctx){ok,text -> success.set(ok);message.set(text);finished.countDown()})
+   assertTrue("Update timeout",finished.await(180,java.util.concurrent.TimeUnit.SECONDS))
+   assertTrue(message.get(),success.get());assertTrue(file.isFile)
+   val downloaded=Catalog.read(ctx);Catalog.validate(downloaded)
+   assertEquals("REGULAR",downloaded.getString("arenaMode"))
+   android.util.Log.i("ArenaUpdateTest","Live rotation written: cards=${downloaded.getJSONArray("cards").length()}, groups=${downloaded.getJSONArray("packages").length()}, heroes=${downloaded.getJSONArray("classStats").length()}, warnings=${downloaded.optString("updateWarnings")}")
+  }finally{file.delete()}
  }
  @Test fun projectionConsentStartsOverlayAndStopsCleanly() {
   val instrumentation=InstrumentationRegistry.getInstrumentation()
