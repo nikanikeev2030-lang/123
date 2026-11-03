@@ -56,6 +56,12 @@ class RegressionTest {
   }finally {api.recycle()}
  }
  @Test fun missingHeroStatsKeepLastValidRates() {
+  val ctx=InstrumentationRegistry.getInstrumentation().targetContext
+  val complete=Catalog.read(ctx)
+  val incomplete=JSONObject(complete.toString()).put("classStats",JSONArray())
+  val path=File(ctx.filesDir,"catalog-update.bin")
+  java.util.zip.GZIPOutputStream(path.outputStream()).use {it.write(incomplete.toString().toByteArray())}
+  try {assertEquals(11,Catalog.read(ctx).getJSONArray("classStats").length())}finally {path.delete()}
   val previous=JSONObject().put("classStats",JSONArray().put(JSONObject().put("id","mage").put("winRate",51.2)))
   val result=JSONObject().put("classStats",JSONArray())
   DatabaseUpdater.retainMissingHeroStats(result,previous)

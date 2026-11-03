@@ -7,7 +7,11 @@ import java.util.zip.GZIPInputStream
 object Catalog {
  fun read(context:Context):JSONObject {
   val update=File(context.filesDir,"catalog-update.bin")
-  if(update.isFile || File(update.path+".bak").isFile) runCatching { android.util.AtomicFile(update).openRead().use(::decode) }.getOrNull()?.let { return it }
+  if(update.isFile || File(update.path+".bak").isFile) runCatching { android.util.AtomicFile(update).openRead().use(::decode) }.getOrNull()?.let {
+   val bundled=context.assets.open("cards.bin").use(::decode)
+   DatabaseUpdater.retainMissingHeroStats(it,bundled)
+   return it
+  }
   return context.assets.open("cards.bin").use(::decode)
  }
  private fun decode(input:InputStream):JSONObject {
