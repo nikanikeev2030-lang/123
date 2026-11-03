@@ -46,6 +46,24 @@ class RegressionTest {
   assertEquals("REGULAR",downloaded.getString("arenaMode"))
   android.util.Log.i("ArenaUpdateTest","Live rotation: cards=${downloaded.getJSONArray("cards").length()}, groups=${downloaded.getJSONArray("packages").length()}, heroes=${downloaded.getJSONArray("classStats").length()}, warnings=${downloaded.optString("updateWarnings")}")
  }
+ @Test fun projectionConsentStartsOverlayAndStopsCleanly() {
+  val instrumentation=InstrumentationRegistry.getInstrumentation()
+  val ctx=instrumentation.targetContext
+  val device=androidx.test.uiautomator.UiDevice.getInstance(instrumentation)
+  device.executeShellCommand("appops set ${ctx.packageName} SYSTEM_ALERT_WINDOW allow")
+  device.executeShellCommand("pm grant ${ctx.packageName} android.permission.POST_NOTIFICATIONS")
+  device.setOrientationLeft()
+  try {
+   ctx.startActivity(Intent(ctx,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+   val start=device.wait(androidx.test.uiautomator.Until.findObject(androidx.test.uiautomator.By.text("Начать")),10000)
+   assertNotNull("Launcher button",start);start.click()
+   val consent=device.wait(androidx.test.uiautomator.Until.findObject(androidx.test.uiautomator.By.res("android","button1")),10000)
+   assertNotNull("System projection consent",consent);consent.click()
+   assertTrue("Overlay counter appears",device.wait(androidx.test.uiautomator.Until.hasObject(androidx.test.uiautomator.By.text("0/30")),15000))
+   assertTrue("Projection foreground service running",device.executeShellCommand("dumpsys activity services ru.arenahelper").contains("CaptureService"))
+  }finally{ctx.stopService(Intent(ctx,CaptureService::class.java));device.unfreezeRotation()}
+ }
+
  @Test fun launcherOpens() {
   val i=InstrumentationRegistry.getInstrumentation();val a=i.startActivitySync(Intent(i.targetContext,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));i.runOnMainSync{a.finish()}
  }
