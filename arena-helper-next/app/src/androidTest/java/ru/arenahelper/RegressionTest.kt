@@ -62,8 +62,12 @@ class RegressionTest {
   device.executeShellCommand("pm grant ${ctx.packageName} android.permission.POST_NOTIFICATIONS")
   device.setOrientationLeft()
   try {
-   ctx.startActivity(Intent(ctx,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-   val start=device.wait(androidx.test.uiautomator.Until.findObject(androidx.test.uiautomator.By.text("Начать")),10000)
+   instrumentation.startActivitySync(Intent(ctx,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+   device.waitForIdle()
+   if(device.findObject(androidx.test.uiautomator.By.desc("Начать захват"))==null) {
+    androidx.test.uiautomator.UiScrollable(androidx.test.uiautomator.UiSelector().scrollable(true)).scrollIntoView(androidx.test.uiautomator.UiSelector().description("Начать захват"))
+   }
+   val start=device.wait(androidx.test.uiautomator.Until.findObject(androidx.test.uiautomator.By.desc("Начать захват")),10000)
    assertNotNull("Launcher button",start);start.click()
    val consent=device.wait(androidx.test.uiautomator.Until.findObject(androidx.test.uiautomator.By.res("android","button1")),10000)
    assertNotNull("System projection consent",consent);consent.click()

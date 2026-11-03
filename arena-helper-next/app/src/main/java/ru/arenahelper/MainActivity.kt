@@ -22,7 +22,7 @@ class MainActivity : Activity() {
   button("Начать") {
    if(!Settings.canDrawOverlays(this)){startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:$packageName")));return@button}
    if(Build.VERSION.SDK_INT>=33 && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)!=android.content.pm.PackageManager.PERMISSION_GRANTED) requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS),9) else launchCapture()
-  }
+  }.contentDescription="Начать захват"
   val info=TextView(this).apply {setTextColor(Color.WHITE);setPadding(0,12,0,12)}
   lateinit var update:Button
   update=button("Обновить базы") {
