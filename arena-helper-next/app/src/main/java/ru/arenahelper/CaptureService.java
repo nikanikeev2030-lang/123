@@ -642,8 +642,9 @@ public final class CaptureService extends Service {
         LinearLayout linearLayout = new LinearLayout(this);
         linearLayout.setOrientation(0);
         this.panel.addView(linearLayout, new LinearLayout.LayoutParams(-1, -2));
-        final int i = 0;
+        int i = 0;
         while (i < 3) {
+            final int cellIndex=i;
             TextView textView = new TextView(this);
             int i2 = i + 1;
             textView.setText(String.valueOf(i2) + ". —");
@@ -655,7 +656,7 @@ public final class CaptureService extends Service {
             textView.setOnClickListener(new View.OnClickListener() { // from class: ru.arenahelper.CaptureService$$ExternalSyntheticLambda2
                 @Override // android.view.View.OnClickListener
                 public final void onClick(View view) {
-                    CaptureService.this.m1506lambda$7$ruarenahelperCaptureService(i, view);
+                    CaptureService.this.m1506lambda$7$ruarenahelperCaptureService(cellIndex, view);
                 }
             });
             LinearLayout.LayoutParams layoutParams = new LinearLayout.LayoutParams(0, -2, 1.0f);

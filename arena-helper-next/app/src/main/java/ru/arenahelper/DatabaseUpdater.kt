@@ -45,7 +45,10 @@ object DatabaseUpdater {
   val warnings=mutableListOf<String>()
   val stats=runCatching { JSONObject(text(STATS,1024*1024)).also(::requireRegular) }.getOrElse { warnings.add("Статистика героев недоступна.");null }
   val groups=runCatching { JSONObject(text(GROUPS,4*1024*1024)).also(::requireRegular) }.getOrElse { warnings.add("Состав групп недоступен.");null }
-  return buildCatalog(tier,metadata,stats,groups).put("metadataBuild",build).put("namesSource",source).put("updateWarnings",warnings.joinToString(" "))
+  var result=buildCatalog(tier,metadata,null,null)
+  if(groups!=null) runCatching {buildCatalog(tier,metadata,null,groups)}.onSuccess{result=it}.onFailure{warnings.add("Состав групп не прошёл проверку.")}
+  if(stats!=null) runCatching {buildCatalog(tier,metadata,stats,null).getJSONArray("classStats")}.onSuccess{result.put("classStats",it)}.onFailure{warnings.add("Статистика героев не прошла проверку.")}
+  return result.put("metadataBuild",build).put("namesSource",source).put("updateWarnings",warnings.joinToString(" "))
  }
  const val STATS="https://hsreplay.net/api/v1/arena/classes_stats/?game_type=BGT_ARENA"
  const val GROUPS="https://hsreplay.net/api/v1/arena/card_packages/free/?game_type=BGT_ARENA"
