@@ -327,7 +327,8 @@ public final class CaptureService extends Service {
             sb = new StringBuilder("hero:");
             Iterator<DraftCatalog.ClassStat> it2 = listRecognize.iterator();
             while (it2.hasNext()) {
-                sb.append(it2.next().id).append(';');
+                DraftCatalog.ClassStat hero = it2.next();
+                sb.append(hero == null ? "?" : hero.id).append(';');
             }
             string = sb.toString();
         } else {
@@ -844,16 +845,16 @@ public final class CaptureService extends Service {
         this.currentHeroes.addAll(list);
         DraftCatalog.ClassStat classStat = null;
         for (DraftCatalog.ClassStat classStat2 : list) {
-            if (classStat == null || classStat2.winRate > classStat.winRate) {
+            if (classStat2 != null && (classStat == null || classStat2.winRate > classStat.winRate)) {
                 classStat = classStat2;
             }
         }
         this.status.setText("Лучший: " + classStat.label + " " + percent(classStat.winRate) + " • выберите класс");
         for (int i = 0; i < 3; i++) {
             TextView textView = this.cells.get(i);
-            if (i < list.size()) {
+            if (i < list.size() && list.get(i) != null) {
                 DraftCatalog.ClassStat classStat3 = list.get(i);
-                textView.setText(String.valueOf(classStat3 == classStat ? "★ " : "") + (i + 1) + ". " + classStat3.label + "\nВинрейт " + percent(classStat3.winRate) + " • " + classStat3.drafts + " драфтов");
+                textView.setText(String.valueOf(classStat3 == classStat ? "★ " : "") + (i + 1) + ". " + classStat3.label + "\nВинрейт " + percent(classStat3.winRate) + " • " + classStat3.drafts + " драфтов" + (classStat3.cached ? " • кэш" : ""));
                 textView.setBackgroundColor(classStat3 == classStat ? -15246528 : -14930883);
                 textView.setEnabled(true);
             } else {
@@ -924,7 +925,7 @@ public final class CaptureService extends Service {
                 }
                 sb.append("Сила ").append(numArr2[i5] == null ? "н/д" : numArr2[i5]);
                 if(this.deckCount < 14) sb.append(" • Только сила (1–14)");
-                else sb.append(numArr3[i5] == null ? " • Кривая н/д: только сила" : " • 70/30 • Кривая " + numArr3[i5]);
+                else sb.append(numArr3[i5] == null ? " • Кривая н/д: только сила" : " • 70/30 • Кривая " + numArr3[i5] + (DraftCatalog.knownCosts(this.deckCosts) < this.deckCosts.size() ? " ≈ (" + DraftCatalog.knownCosts(this.deckCosts) + "/" + this.deckCosts.size() + " известно)" : ""));
                 if (this.currentFirst[i5] && (packageInfoPackageFor = this.catalog.packageFor(details2.name)) != null && !packageInfoPackageFor.cards.isEmpty()) {
                     sb.append("\n+3: ");
                     for (int i6 = 0; i6 < packageInfoPackageFor.cards.size(); i6++) {
@@ -969,6 +970,7 @@ public final class CaptureService extends Service {
                 return;
             }
             DraftCatalog.ClassStat classStat = this.currentHeroes.get(i);
+            if (classStat == null) return;
             this.currentClass = classStat.id;
             this.prefs.edit().putString("class", classStat.id).apply();
             resetDeck();

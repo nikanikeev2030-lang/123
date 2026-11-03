@@ -6,8 +6,8 @@ android {
   applicationId = "ru.arenahelper"
   minSdk = 30
   targetSdk = 35
-  versionCode = 15
-  versionName = "1.1.4"
+  versionCode = 16
+  versionName = "1.1.5"
   testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   ndk { abiFilters += (project.findProperty("arenaTestAbi")?.toString() ?: "arm64-v8a") }
  }

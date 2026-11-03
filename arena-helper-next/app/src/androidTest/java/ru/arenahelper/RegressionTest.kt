@@ -29,6 +29,39 @@ class RegressionTest {
    try{assertNull(OcrEngine.recognize(api,b,matcher))}finally{b.recycle()}
   }finally{api.recycle()}
  }
+ @Test fun allElevenHeroesAndMissingMiddleSlot() {
+  val ctx=InstrumentationRegistry.getInstrumentation().targetContext
+  val catalog=DraftCatalog(ctx);val ocr=HeroOcr(catalog)
+  assertEquals(11,catalog.classStats().size)
+  for(hero in catalog.classStats())assertEquals(hero.id,ocr.matchText(hero.label.replace(" ","\n\n"))?.id)
+  assertNull(ocr.matchText("Выберите карту для вашей колоды"))
+  val dir=File(ctx.cacheDir,"hero-test/tessdata").apply {mkdirs()}
+  ctx.assets.open("rus.traineddata").use {input->File(dir,"rus.traineddata").outputStream().use {input.copyTo(it)}}
+  val api=TessBaseAPI();assertTrue(api.init(dir.parent,"rus",TessBaseAPI.OEM_LSTM_ONLY))
+  val heroes=catalog.classStats().toList()
+  try {
+   for(group in heroes.chunked(3)+listOf(listOf(heroes[0],null,heroes.last()))) {
+    val b=Bitmap.createBitmap(1600,900,Bitmap.Config.ARGB_8888)
+    val canvas=Canvas(b);canvas.drawColor(Color.BLACK)
+    val paint=Paint(Paint.ANTI_ALIAS_FLAG).apply {color=Color.WHITE;textSize=27f;typeface=Typeface.create("serif",Typeface.BOLD)}
+    for((slot,hero) in group.withIndex())hero?.label?.split(" ")?.forEachIndexed {line,word ->
+     canvas.drawText(word,slot*1600f/3+80f,540f+line*40,paint)
+    }
+    try {
+     val found=ocr.recognize(api,b,100)
+     assertEquals(3,found.size)
+     for(slot in 0..2)assertEquals("Slot $slot of $group",group.getOrNull(slot)?.id,found[slot]?.id)
+    }finally {b.recycle()}
+   }
+  }finally {api.recycle()}
+ }
+ @Test fun missingHeroStatsKeepLastValidRates() {
+  val previous=JSONObject().put("classStats",JSONArray().put(JSONObject().put("id","mage").put("winRate",51.2)))
+  val result=JSONObject().put("classStats",JSONArray())
+  DatabaseUpdater.retainMissingHeroStats(result,previous)
+  val row=result.getJSONArray("classStats").getJSONObject(0)
+  assertEquals(51.2,row.getDouble("winRate"),.001);assertTrue(row.getBoolean("cached"))
+ }
  @Test fun updateParsersAndRollbackGuard() {
   val ctx=InstrumentationRegistry.getInstrumentation().targetContext
   val old=Catalog.read(ctx)

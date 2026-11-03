@@ -22,6 +22,7 @@ public final class DraftCatalog {
 
     public static final class ClassStat {
         public int drafts;
+        public boolean cached;
         public String id;
         public String label;
         public double winRate;
@@ -98,6 +99,7 @@ public final class DraftCatalog {
                 classStat.label = jSONObject6.getString("label");
                 classStat.winRate = jSONObject6.getDouble("winRate");
                 classStat.drafts = jSONObject6.optInt("drafts");
+                classStat.cached = jSONObject6.optBoolean("cached", false);
                 this.stats.put(classStat.id, classStat);
             }
         }
@@ -206,20 +208,25 @@ public final class DraftCatalog {
         return i == 6 ? 5 : 6;
     }
 
-    public static Integer curveScore(int i, List<Integer> list) {
-        if (i < 0 || list.contains(-1)) {
-            return null;
+    public static int knownCosts(List<Integer> costs) {
+        int known = 0;
+        for (Integer cost : costs) if (cost != null && cost >= 0) known++;
+        return known;
+    }
+
+    public static Integer curveScore(int cost, List<Integer> costs) {
+        if (cost < 0) return null;
+        int bucket = bucket(cost), known = knownCosts(costs), matching = 0;
+        for (Integer value : costs) {
+            if (value != null && value >= 0 && bucket(value) == bucket) matching++;
         }
-        int iBucket = bucket(i);
-        Iterator<Integer> it = list.iterator();
-        int i2 = 0;
-        while (it.hasNext()) {
-            int iIntValue = it.next().intValue();
-            if (iIntValue >= 0 && bucket(iIntValue) == iBucket) {
-                i2++;
-            }
-        }
-        return Integer.valueOf((int) Math.round(Math.max(10.0d, Math.min(100.0d, ((double) BASE_FIT[iBucket]) - ((((double) i2) * 70.0d) / ((double) TARGET[iBucket]))))));
+        // Unknown picks use a smoothed distribution: observed cards plus a six-card
+        // prior proportional to the target curve. Never pretend unknown picks are known.
+        int missing = costs.size() - known;
+        double probability = (matching + 6.0 * TARGET[bucket] / 30.0) / (known + 6.0);
+        double estimated = matching + missing * probability;
+        return (int) Math.round(Math.max(10.0, Math.min(100.0,
+                BASE_FIT[bucket] - estimated * 70.0 / TARGET[bucket])));
     }
 
     public static Integer packageCurve(Details details, PackageInfo packageInfo) {

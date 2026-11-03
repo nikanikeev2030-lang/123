@@ -22,6 +22,7 @@ object DatabaseUpdater {
    var ok=false
    val message=try {
     val result=download()
+    retainMissingHeroStats(result,Catalog.read(app))
     val atomic=AtomicFile(File(app.filesDir,"catalog-update.bin"))
     val stream=atomic.startWrite()
     try {
@@ -35,6 +36,19 @@ object DatabaseUpdater {
    Handler(Looper.getMainLooper()).post {callback.done(ok,message)}
   },"arena-db-update").start()
   return true
+ }
+ internal fun retainMissingHeroStats(result:JSONObject,previous:JSONObject) {
+  val stats=result.optJSONArray("classStats")?:JSONArray().also {result.put("classStats",it)}
+  val ids=(0 until stats.length()).map {stats.getJSONObject(it).getString("id")}.toSet()
+  val old=previous.optJSONArray("classStats")?:return
+  var retained=0
+  for(i in 0 until old.length()) {
+   val row=old.getJSONObject(i)
+   if(row.getString("id") !in ids) {
+    stats.put(JSONObject(row.toString()).put("cached",true));retained++
+   }
+  }
+  if(retained>0)result.put("updateWarnings",result.optString("updateWarnings")+" Для $retained классов сохранена предыдущая статистика (пометка «кэш»).")
  }
  fun download():JSONObject {
   val tier=text("https://www.heartharena.com/en/tierlist",4*1024*1024)
