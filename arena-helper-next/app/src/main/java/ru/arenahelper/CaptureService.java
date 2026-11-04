@@ -58,7 +58,7 @@ public final class CaptureService extends Service {
     private long lastFrame;
     private long lastMotionFrame;
     private long lastTap;
-    private volatile long manualPickAt;
+    private String manuallyCountedOffer = null;
     private volatile boolean motionActive;
     private int motionFrames;
     private LinearLayout panel;
@@ -350,7 +350,6 @@ public final class CaptureService extends Service {
         int slot = this.autoCandidate;
         long age = SystemClock.elapsedRealtime() - this.autoCandidateAt;
         this.autoCandidate = -1;
-        if (SystemClock.elapsedRealtime() - this.manualPickAt < 1500) return;
         Match picked = slot >= 0 && slot < trackedMatches.size() && age <= 8000 ? trackedMatches.get(slot) : null;
         final String name = picked == null ? null : picked.getCard().getName();
         main.post(() -> {
@@ -861,10 +860,10 @@ public final class CaptureService extends Service {
         if (i >= this.currentMatches.size() || (match = this.currentMatches.get(i)) == null || (details = this.catalog.details(match.getCard().getName())) == null) {
             return;
         }
-        this.manualPickAt = jElapsedRealtime;
+        if (trackedKey.equals(manuallyCountedOffer)) return;
+        manuallyCountedOffer = trackedKey;
         this.motionActive = false;
         this.autoCandidate = -1;
-        this.trackedKey = "";
         boolean z = this.currentFirst[i];
         addPick(details, z);
         Toast.makeText(this, z ? "Добавлен пакет: 4 карты" : "Добавлено вручную: " + details.name, Toast.LENGTH_SHORT).show();
@@ -898,6 +897,7 @@ public final class CaptureService extends Service {
     }
 
     private void resetDeck() {
+        this.manuallyCountedOffer = null;
         this.deckCount = 0;
         this.deckCosts.clear();
         saveDeck();
