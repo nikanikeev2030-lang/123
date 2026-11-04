@@ -128,10 +128,14 @@ class RegressionTest {
   try {
    instrumentation.startActivitySync(Intent(ctx,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
    device.waitForIdle()
-   if(device.findObject(androidx.test.uiautomator.By.desc("Начать захват"))==null) {
-    androidx.test.uiautomator.UiScrollable(androidx.test.uiautomator.UiSelector().scrollable(true)).scrollIntoView(androidx.test.uiautomator.UiSelector().description("Начать захват"))
+   val control=androidx.test.uiautomator.By.desc("Начать захват")
+   var start=device.wait(androidx.test.uiautomator.Until.findObject(control),3500)
+   if(start==null) {
+    val viewport=device.wait(androidx.test.uiautomator.Until.findObject(androidx.test.uiautomator.By.scrollable(true).pkg(ctx.packageName)),10000)
+    assertNotNull("Launcher viewport",viewport)
+    viewport.scroll(androidx.test.uiautomator.Direction.DOWN,0.55f)
+    start=device.wait(androidx.test.uiautomator.Until.findObject(control),5000)
    }
-   val start=device.wait(androidx.test.uiautomator.Until.findObject(androidx.test.uiautomator.By.desc("Начать захват")),10000)
    assertNotNull("Launcher button",start);start.click()
    val consent=device.wait(androidx.test.uiautomator.Until.findObject(androidx.test.uiautomator.By.res("android","button1")),10000)
    assertNotNull("System projection consent",consent);consent.click()
