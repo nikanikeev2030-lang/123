@@ -31,7 +31,7 @@ class ArtReader(context:Context, private val catalog:DraftCatalog) {
             if (encoded.isNotEmpty()) cards.add(Reference(row.getString("name"),decode(encoded)))
             if(builtIn.has("signature:"+id)) cards.add(Reference(row.getString("name"),decode(builtIn.getString("signature:"+id))))
         }
-        val skins=context.assets.open("portraits.gz").use { input ->
+        val skins=context.assets.open("portraits.bin").use { input ->
             java.util.zip.GZIPInputStream(input).bufferedReader().use { JSONObject(it.readText()) }
         }
         for (key in skins.keys()) {

@@ -12,6 +12,6 @@ with zipfile.ZipFile(sys.argv[1]) as apk:
 
     extra=json.loads(apk.read('assets/extra.json'))
     assert {c['cardId'] for c in extra['cards']} >= {'REV_023','TIME_EVENT_999','TLC_EVENT_400'}
-    portraits=json.loads(gzip.decompress(apk.read('assets/portraits.gz')))
+    portraits=json.loads(gzip.decompress(apk.read('assets/portraits.bin')))
     assert len(portraits)>=700 and len({k.split(':')[0] for k in portraits})==11
     assert all(len(base64.b64decode(v,validate=True))==240 for v in portraits.values())
