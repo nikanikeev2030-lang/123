@@ -179,16 +179,6 @@ public final class DraftCatalog {
         return str;
     }
 
-    public List<Card> matcherCards() {
-        ArrayList arrayList = new ArrayList();
-        for (Details details : this.cards.values()) {
-            if (!details.name.isEmpty()) {
-                arrayList.add(new Card(details.name, details.scores.isEmpty()?null:details.scores.values().iterator().next()));
-            }
-        }
-        return arrayList;
-    }
-
     public static int bucket(int i) {
         if (i <= 1) {
             return 0;

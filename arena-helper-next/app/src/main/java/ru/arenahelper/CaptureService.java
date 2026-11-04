@@ -7,7 +7,6 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.content.res.AssetManager;
 import android.graphics.Bitmap;
 import android.graphics.Rect;
 import android.graphics.RectF;
@@ -30,12 +29,8 @@ import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
-import com.googlecode.tesseract.android.TessBaseAPI;
 import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -43,8 +38,6 @@ import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import kotlin.UByte;
 import kotlin.Unit;
 import kotlin.jvm.functions.Function0;
@@ -62,12 +55,10 @@ public final class CaptureService extends Service {
     private volatile int generation;
     private int height;
     private boolean heroMode;
-    private HeroOcr heroOcr;
     private long lastFrame;
     private long lastMotionFrame;
     private long lastTap;
     private volatile long manualPickAt;
-    private CardMatcher matcher;
     private volatile boolean motionActive;
     private int motionFrames;
     private LinearLayout panel;
@@ -79,15 +70,12 @@ public final class CaptureService extends Service {
     private int stable;
     private TextView status;
     private volatile boolean stopped;
-    private TessBaseAPI tess;
-    private int visibleCounterStreak;
     private int width;
     private WindowManager wm;
     private Handler worker;
     private final Handler main = new Handler(Looper.getMainLooper());
-    private final HandlerThread thread = new HandlerThread("arena-ocr");
+    private final HandlerThread thread = new HandlerThread("arena-art");
     private final List<TextView> cells = new ArrayList();
-    private int visibleCounter = -1;
     private String previousKey = "";
     private volatile String currentClass = "mage";
     private final List<Integer> deckCosts = new ArrayList();
@@ -95,7 +83,7 @@ public final class CaptureService extends Service {
     private final boolean[] currentFirst = new boolean[3];
     private String activeHeroKey = "";
     private final List<DraftCatalog.ClassStat> currentHeroes = new ArrayList();
-    private final OcrEngine ocr = OcrEngine.INSTANCE;
+    private ArtReader art;
     private volatile int autoCandidate = -1;
     private volatile String trackedKey = "";
     private volatile List<Match> trackedMatches = new ArrayList();
@@ -136,7 +124,7 @@ public final class CaptureService extends Service {
             if(projection==null)throw new IllegalStateException("MediaProjection не получен");
             projection.registerCallback(new MediaProjection.Callback(){
                 @Override public void onStop(){main.post(() -> stopSelf());}
-                @Override public void onCapturedContentResize(int w,int h){worker.post(() -> {if(tess!=null)resize(w,h);});}
+                @Override public void onCapturedContentResize(int w,int h){worker.post(() -> {if(art!=null)resize(w,h);});}
             },main);
             showPanel();worker.post(() -> initialize());
         }catch(Exception e){fail(e);}
@@ -145,56 +133,10 @@ public final class CaptureService extends Service {
 
     public void initialize() {
         try {
-            File file = new File(getFilesDir(), "ocr/tessdata");
-            file.mkdirs();
-            File file2 = new File(file, "rus.traineddata");
-            AssetManager assets = getAssets();
-            if (!file2.exists() || file2.length() < 1000000) {
-                Throwable th = null;
-                try {
-                    InputStream inputStreamOpen = assets.open("rus.traineddata");
-                    try {
-                        FileOutputStream fileOutputStream = new FileOutputStream(file2);
-                        try {
-                            copy(inputStreamOpen, fileOutputStream);
-                            fileOutputStream.close();
-                            if (inputStreamOpen != null) {
-                                inputStreamOpen.close();
-                            }
-                        } catch (Throwable th2) {
-                            fileOutputStream.close();
-                            throw new RuntimeException(th2);
-                        }
-                    } catch (Throwable th3) {
-                        if (0 == 0) {
-                            th = th3;
-                        } else if (null != th3) {
-                            th.addSuppressed(th3);
-                        }
-                        if (inputStreamOpen == null) {
-                            throw new RuntimeException(th);
-                        }
-                        inputStreamOpen.close();
-                        throw new RuntimeException(th);
-                    }
-                } catch (Throwable th4) {
-                    if (0 == 0) {
-                        throw new RuntimeException(th4);
-                    }
-                    if (null != th4) {
-                        th.addSuppressed(th4);
-                    }
-                    throw null;
-                }
-            }
-            this.tess = new TessBaseAPI();
-            if (!this.tess.init(file.getParent(), "rus", TessBaseAPI.OEM_LSTM_ONLY)) {
-                throw new IllegalStateException("Не удалось загрузить русский OCR");
-            }
-            this.tess.setPageSegMode(TessBaseAPI.PageSegMode.PSM_SINGLE_BLOCK);
             this.catalog = new DraftCatalog(this);
-            this.matcher = new CardMatcher(this.catalog.matcherCards());
-            this.heroOcr = new HeroOcr(this.catalog);
+            this.art = new ArtReader(this, catalog);
+            File oldModel = new File(getFilesDir(), "ocr/tessdata/rus.traineddata");
+            if (oldModel.exists()) oldModel.delete();
             Rect bounds = this.wm.getMaximumWindowMetrics().getBounds();
             resize(Math.max(bounds.width(), bounds.height()), Math.min(bounds.width(), bounds.height()));
             this.main.post(new Runnable() { // from class: ru.arenahelper.CaptureService$$ExternalSyntheticLambda14
@@ -211,18 +153,6 @@ public final class CaptureService extends Service {
     
      void m1493lambda$1$ruarenahelperCaptureService() {
         this.status.setText("Готово • автоматический учёт выбранных карт");
-    }
-
-    private static void copy(InputStream inputStream, OutputStream outputStream) throws IOException {
-        byte[] bArr = new byte[16384];
-        while (true) {
-            int i = inputStream.read(bArr);
-            if (i < 0) {
-                return;
-            } else {
-                outputStream.write(bArr, 0, i);
-            }
-        }
     }
 
     private void resize(final int i, final int i2) {
@@ -269,14 +199,14 @@ public final class CaptureService extends Service {
         Image image=null;Bitmap bitmap=null;
         try {
             image=source.acquireLatestImage();
-            if(image==null || stopped || paused || calibrating || tess==null || matcher==null)return;
+            if(image==null || stopped || paused || calibrating || art==null)return;
             if(getResources().getConfiguration().orientation!=2){main.post(() -> m1502lambda$3$ruarenahelperCaptureService());return;}
             int w=image.getWidth(),h=image.getHeight();if(w<h)return;
-            long now=SystemClock.elapsedRealtime();boolean motion=motionActive && now-lastMotionFrame>=90;boolean ocr=now-lastFrame>=1600;
-            if(!motion && !ocr)return;
+            long now=SystemClock.elapsedRealtime();boolean motion=motionActive && now-lastMotionFrame>=90;boolean scan=now-lastFrame>=650;
+            if(!motion && !scan)return;
             if(image.getPlanes().length==0)return;Image.Plane p=image.getPlanes()[0];
             if(motion){lastMotionFrame=now;updateMotion(p,w,h,now);}
-            if(!ocr)return;lastFrame=now;
+            if(!scan)return;lastFrame=now;
             int[] pixels=FramePixels.INSTANCE.decode(p.getBuffer(),w,h,p.getRowStride(),p.getPixelStride());if(pixels==null)return;
             bitmap=Bitmap.createBitmap(pixels,w,h,Bitmap.Config.ARGB_8888);recognize(bitmap,w,h);
         } catch(Exception e){Log.e("ArenaHelper","Frame recognition failed",e);main.post(() -> m1503lambda$4$ruarenahelperCaptureService(e));}
@@ -303,8 +233,8 @@ public final class CaptureService extends Service {
         ArrayList<Match> arrayList = new ArrayList();
         boolean z = false;
         for (int i4 = 0; i4 < 3; i4++) {
-            Match matchRecognizeRegion2 = recognizeRegion(bitmap, listLoad.get(i4));
-            if ((matchRecognizeRegion2 == null || matchRecognizeRegion2.getConfidence() < 0.9d) && !same(listLoad.get(i4), listDefaults.get(i4)) && (matchRecognizeRegion = recognizeRegion(bitmap, listDefaults.get(i4))) != null && (matchRecognizeRegion2 == null || matchRecognizeRegion.getConfidence() > matchRecognizeRegion2.getConfidence())) {
+            Match matchRecognizeRegion2 = art.card(bitmap, listLoad.get(i4));
+            if ((matchRecognizeRegion2 == null || matchRecognizeRegion2.getConfidence() < 0.9d) && !same(listLoad.get(i4), listDefaults.get(i4)) && (matchRecognizeRegion = art.card(bitmap, listDefaults.get(i4))) != null && (matchRecognizeRegion2 == null || matchRecognizeRegion.getConfidence() > matchRecognizeRegion2.getConfidence())) {
                 matchRecognizeRegion2 = matchRecognizeRegion;
             }
             arrayList.add(matchRecognizeRegion2);
@@ -316,8 +246,7 @@ public final class CaptureService extends Service {
                 i5++;
             }
         }
-        int deckCounter = i5 >= 2 ? readDeckCounter(bitmap) : -1;
-        List<DraftCatalog.ClassStat> listRecognize = i5 < 2 ? this.heroOcr.recognize(this.tess, bitmap, this.panelHeight + dp(2)) : Collections.emptyList();
+        List<DraftCatalog.ClassStat> listRecognize = i5 < 2 ? art.heroSlots(bitmap) : Collections.emptyList();
         ArrayList arrayList2 = new ArrayList();
         for (Match match : arrayList) {
             arrayList2.add(match == null ? "?" : match.getCard().getName());
@@ -353,9 +282,9 @@ public final class CaptureService extends Service {
         if (z2) {
             this.motionActive = false;
             this.autoCandidate = -1;
-        } else {
-            if (this.motionActive && !string.equals(this.trackedKey) && isNextChoices(this.trackedMatches, arrayList3)) {
-                commitAutomaticPick(i3, deckCounter);
+        } else if (i5 >= 2 && !string.equals(this.trackedKey)) {
+            if (this.motionActive && isNextChoices(this.trackedMatches, arrayList3)) {
+                commitAutomaticPick(i3);
             }
             this.trackedKey = string;
             this.trackedMatches = new ArrayList(arrayList3);
@@ -365,23 +294,19 @@ public final class CaptureService extends Service {
             this.motionActive = z;
             resetMotion();
         }
-        final int i6 = deckCounter;
         final String str = string;
         this.main.post(new Runnable() { // from class: ru.arenahelper.CaptureService$$ExternalSyntheticLambda0
             @Override // java.lang.Runnable
             public final void run() {
-                CaptureService.this.m1504lambda$5$ruarenahelperCaptureService(i3, z2, i6, arrayList4, str, arrayList3);
+                CaptureService.this.m1504lambda$5$ruarenahelperCaptureService(i3, z2, arrayList4, str, arrayList3);
             }
         });
     }
 
     
-     void m1504lambda$5$ruarenahelperCaptureService(int i, boolean z, int i2, List list, String str, List list2) {
+     void m1504lambda$5$ruarenahelperCaptureService(int i, boolean z, List list, String str, List list2) {
         if (i != this.generation || this.stopped) {
             return;
-        }
-        if (!z && i2 >= 0) {
-            syncDeckCount(i2);
         }
         if (z) {
             renderHeroes(list, str);
@@ -421,39 +346,19 @@ public final class CaptureService extends Service {
         return true;
     }
 
-    private void commitAutomaticPick(final int i, final int i2) {
-        Match match;
-        int i3 = this.autoCandidate;
-        long j = this.autoCandidateAt;
+    private void commitAutomaticPick(final int generationAtFrame) {
+        int slot = this.autoCandidate;
+        long age = SystemClock.elapsedRealtime() - this.autoCandidateAt;
         this.autoCandidate = -1;
-        this.autoCandidateAt = 0L;
-        if (i3 < 0 || i3 >= this.trackedMatches.size()) {
-            return;
-        }
-        long jElapsedRealtime = SystemClock.elapsedRealtime();
-        if (jElapsedRealtime - j > 8000 || jElapsedRealtime - this.manualPickAt < 5000 || (match = this.trackedMatches.get(i3)) == null) {
-            return;
-        }
-        final String name = match.getCard().getName();
-        this.main.post(new Runnable() { // from class: ru.arenahelper.CaptureService$$ExternalSyntheticLambda12
-            @Override // java.lang.Runnable
-            public final void run() {
-                CaptureService.this.m1505lambda$6$ruarenahelperCaptureService(i, name, i2);
-            }
+        if (SystemClock.elapsedRealtime() - this.manualPickAt < 1500) return;
+        Match picked = slot >= 0 && slot < trackedMatches.size() && age <= 8000 ? trackedMatches.get(slot) : null;
+        final String name = picked == null ? null : picked.getCard().getName();
+        main.post(() -> {
+            if (generationAtFrame != generation || stopped || deckCount >= 30) return;
+            DraftCatalog.Details details = name == null ? null : catalog.details(name);
+            if (details != null) addPick(details, deckCount == 0);
+            else setDeckCount(Math.min(30, deckCount + (deckCount == 0 ? 4 : 1)));
         });
-    }
-
-    
-     void m1505lambda$6$ruarenahelperCaptureService(int i, String str, int i2) {
-        DraftCatalog.Details details;
-        if (i != this.generation || this.stopped || this.deckCount >= 30 || (details = this.catalog.details(str)) == null) {
-            return;
-        }
-        addPick(details, i2 == 4 || (i2 < 0 && this.deckCount == 0));
-        if (i2 >= 0) {
-            syncDeckCount(i2);
-        }
-        Toast.makeText(this, "Автоматически добавлено: " + details.name, Toast.LENGTH_SHORT).show();
     }
 
     private void resetMotion() {
@@ -551,42 +456,7 @@ public final class CaptureService extends Service {
         return iArr;
     }
 
-    private int readDeckCounter(Bitmap image) {
-        Bitmap crop=null;
-        try {
-            crop=Bitmap.createBitmap(image,(int)(image.getWidth()*.32f),(int)(image.getHeight()*.855f),(int)(image.getWidth()*.14f),(int)(image.getHeight()*.09f));
-            int w=crop.getWidth(),h=crop.getHeight();int[] pixels=new int[w*h];crop.getPixels(pixels,0,w,0,0,w,h);
-            for(int threshold:new int[]{200,180}){
-                Bitmap binary=Bitmap.createBitmap(TitlePixels.INSTANCE.prepare(pixels,w,h,threshold,0),w,h,Bitmap.Config.ARGB_8888);
-                Bitmap scaled=Bitmap.createScaledBitmap(binary,w*3,h*3,true);
-                try{tess.setPageSegMode(TessBaseAPI.PageSegMode.PSM_SINGLE_BLOCK);tess.setImage(scaled);String text=tess.getUTF8Text();
-                    if(text!=null){Matcher m=Pattern.compile("(\\d{1,2})\\s*/\\s*30").matcher(text);if(m.find()){int n=Integer.parseInt(m.group(1));if(n>=0&&n<=30)return n;}}
-                }finally{tess.clear();if(scaled!=binary)scaled.recycle();binary.recycle();}
-            }
-        }catch(Exception e){Log.d("ArenaHelper","Counter unavailable",e);}finally{if(crop!=null)crop.recycle();}
-        return -1;
-    }
-
-    private void syncDeckCount(int i) {
-        if (i < 0 || i > 30) {
-            return;
-        }
-        if (i == this.visibleCounter) {
-            this.visibleCounterStreak++;
-        } else {
-            this.visibleCounter = i;
-            this.visibleCounterStreak = 1;
-        }
-        if (this.visibleCounterStreak < 2) {
-            return;
-        }
-        if (i == 0) {
-            if (this.deckCount == 0 && this.deckCosts.isEmpty()) {
-                return;
-            }
-            resetDeck();
-            return;
-        }
+    private void setDeckCount(int i) {
         this.deckCount = i;
         while (this.deckCosts.size() < i) {
             this.deckCosts.add(-1);
@@ -602,24 +472,6 @@ public final class CaptureService extends Service {
         return ((Math.abs(rectF.left - rectF2.left) + Math.abs(rectF.top - rectF2.top)) + Math.abs(rectF.right - rectF2.right)) + Math.abs(rectF.bottom - rectF2.bottom) < 0.002f;
     }
 
-    private Match recognizeRegion(Bitmap bitmap, RectF rectF) {
-        Bitmap bitmapCreateBitmap = null;
-        try {
-            int width = bitmap.getWidth();
-            int height = bitmap.getHeight();
-            float f = width;
-            int iClamp = clamp((int) (rectF.left * f), 0, width - 2);
-            float f2 = height;
-            int iClamp2 = clamp((int) (rectF.top * f2), 0, height - 2);
-            bitmapCreateBitmap = Bitmap.createBitmap(bitmap, iClamp, iClamp2, clamp(Math.round(rectF.width() * f), 2, width - iClamp), clamp(Math.round(rectF.height() * f2), 2, height - iClamp2));
-            return this.ocr.recognize(this.tess, bitmapCreateBitmap, this.matcher);
-        } finally {
-            if (bitmapCreateBitmap != null) {
-                bitmapCreateBitmap.recycle();
-            }
-        }
-    }
-
     private static int clamp(int i, int i2, int i3) {
         return Math.max(i2, Math.min(i3, i));
     }
@@ -628,6 +480,32 @@ public final class CaptureService extends Service {
         WindowManager.LayoutParams layoutParams = new WindowManager.LayoutParams(i, i2, 2038, 8, -3);
         layoutParams.gravity = android.view.Gravity.START | i3;
         return layoutParams;
+    }
+
+    private void showDraftTools() {
+        ArrayList<String> labels = new ArrayList<>();
+        labels.add("Указать число карт в колоде");
+        ArrayList<DraftCatalog.ClassStat> heroes = new ArrayList<>(catalog.classStats());
+        for (DraftCatalog.ClassStat hero : heroes) labels.add(hero.label + "  " + percent(hero.winRate) + (hero.cached ? " • кэш" : ""));
+        android.app.AlertDialog dialog = new android.app.AlertDialog.Builder(this)
+            .setTitle("Колода и классы Арены")
+            .setItems(labels.toArray(new String[0]), (d, index) -> {
+                if (index > 0) {
+                    currentClass = heroes.get(index - 1).id;
+                    prefs.edit().putString("class", currentClass).apply();
+                } else {
+                    String[] counts = new String[31];
+                    for (int i = 0; i < counts.length; i++) counts[i] = i + "/30";
+                    android.app.AlertDialog picker = new android.app.AlertDialog.Builder(this)
+                        .setTitle("Сколько карт уже выбрано?").setSingleChoiceItems(counts, deckCount, (p, value) -> {
+                            setDeckCount(value); p.dismiss();
+                        }).create();
+                    picker.getWindow().setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY);
+                    picker.show();
+                }
+            }).create();
+        dialog.getWindow().setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY);
+        dialog.show();
     }
 
     private void showPanel() {
@@ -675,6 +553,8 @@ public final class CaptureService extends Service {
         this.controls.setPadding(dp(4), dp(4), dp(4), dp(4));
         this.controls.setBackgroundColor(-535814870);
         this.deckLabel = new TextView(this);
+        this.deckLabel.setOnClickListener(v -> { if (catalog != null) showDraftTools(); });
+        this.deckLabel.setContentDescription("Исправить счётчик или выбрать класс");
         this.deckLabel.setTextColor(-1);
         this.deckLabel.setTextSize(14.0f);
         this.deckLabel.setGravity(17);
@@ -949,7 +829,7 @@ public final class CaptureService extends Service {
                 i++;
             }
         }
-        String str2 = String.valueOf(str) + " • " + this.deckCount + "/30 • OCR " + i + "/3";
+        String str2 = String.valueOf(str) + " • " + this.deckCount + "/30 • Карты " + i + "/3";
         if (i3 < 0) {
             str2 = String.valueOf(str2) + " • нет оценок";
         }
@@ -1136,12 +1016,6 @@ public final class CaptureService extends Service {
                 this.projection.stop();
             }
         } catch (Exception e3) {
-        }
-        try {
-            if (this.tess != null) {
-                this.tess.recycle();
-            }
-        } catch (Exception e4) {
         }
     }
 }

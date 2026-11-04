@@ -1,14 +1,11 @@
-import gzip,json,struct,sys,zipfile
-with zipfile.ZipFile(sys.argv[1]) as z:
- assert len(z.read('assets/rus.traineddata'))>1000000
- cards=json.loads(gzip.decompress(z.read('assets/cards.bin')))['cards']
- assert len(cards)>=800 and sum(bool(c['scores']) for c in cards)>300
- libs=[n for n in z.namelist() if n.startswith('lib/') and n.endswith('.so')]
- assert libs and all(n.startswith('lib/arm64-v8a/') for n in libs)
- for n in libs:
-  b=z.read(n); assert b[:4]==b'\x7fELF' and b[4]==2 and b[5]==1
-  off=struct.unpack_from('<Q',b,32)[0]; size,count=struct.unpack_from('<HH',b,54)
-  loads=[struct.unpack_from('<Q',b,off+i*size+48)[0] for i in range(count) if struct.unpack_from('<I',b,off+i*size)[0]==1]
-  assert loads and min(loads)>=16384,(n,loads)
-  print(n,'16 KB ELF alignment OK')
-print('Offline Russian model, catalog and ARM64 libraries verified.')
+import base64,gzip,json,sys,zipfile
+with zipfile.ZipFile(sys.argv[1]) as apk:
+    entries=apk.namelist()
+    assert not any('tesseract' in n.lower() or n.endswith('.traineddata') for n in entries)
+    assert not any(n.startswith('lib/') and n.endswith('.so') for n in entries)
+    cards=json.loads(gzip.decompress(apk.read('assets/cards.bin')))['cards']
+    refs=json.loads(apk.read('assets/art.json'))
+    assert len(cards)>=800 and all(c['cardId'] in refs for c in cards)
+    assert len([k for k in refs if k.startswith('hero:')])==11
+    assert all(len(base64.b64decode(v,validate=True))==240 for v in refs.values())
+    print(f'{len(cards)} cards, 11 hero fingerprints, no OCR model or native libraries.')

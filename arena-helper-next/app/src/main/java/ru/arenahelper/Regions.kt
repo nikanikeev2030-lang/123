@@ -10,15 +10,15 @@ object Regions {
         val contentWidth = minOf(width.toFloat(), height * 16f / 9f)
         val left = (width - contentWidth) / 2f
         return (0..2).map { i ->
-            val center = left + contentWidth * (0.26f + i * 0.24f)
-            RectF((center - contentWidth * 0.079f) / width, 0.473f,
-                (center + contentWidth * 0.079f) / width, 0.530f)
+            val center = left + contentWidth * (0.26f + i * 0.238f)
+            RectF((center - contentWidth * 0.0405f) / width, 0.3515f,
+                (center + contentWidth * 0.0405f) / width, 0.4435f)
         }
     }
     fun load(context: Context, width: Int, height: Int): List<RectF> {
         val defaults = defaults(width, height)
         val p = context.getSharedPreferences("arena", 0)
-        if (p.getInt("regionVersion", 0) != 2) return defaults
+        if (p.getInt("regionVersion", 0) != 3) return defaults
         return defaults.mapIndexed { i, d ->
             val r = RectF(p.getFloat("l$i", d.left), p.getFloat("t$i", d.top), p.getFloat("r$i", d.right), p.getFloat("b$i", d.bottom))
             if (listOf(r.left, r.top, r.right, r.bottom).all { it.isFinite() && it in 0f..1f } && r.width() >= 0.025f && r.height() >= 0.015f) r else d
@@ -26,7 +26,7 @@ object Regions {
     }
     fun save(context: Context, regions: List<RectF>) {
         require(regions.size == 3)
-        val e = context.getSharedPreferences("arena", 0).edit().putInt("regionVersion", 2)
+        val e = context.getSharedPreferences("arena", 0).edit().putInt("regionVersion", 3)
         regions.forEachIndexed { i, r -> e.putFloat("l$i", r.left).putFloat("t$i", r.top).putFloat("r$i", r.right).putFloat("b$i", r.bottom) }
         e.apply()
     }
@@ -41,7 +41,7 @@ class CalibrationView(context: Context, private val done: () -> Unit) : FrameLay
             setPadding(8, 4, 8, 4); setBackgroundColor(0xF0102332.toInt())
         }
         toolbar.addView(TextView(context).apply {
-            text = "Обведите название карты"; setTextColor(Color.WHITE); textSize = 14f
+            text = "Выделите центр рисунка карты"; setTextColor(Color.WHITE); textSize = 14f
         }, LinearLayout.LayoutParams(0, -2, 1f))
         for (i in 0..2) toolbar.addView(Button(context).apply {
             text = "${i + 1}"; contentDescription = "Выбрать рамку ${i + 1}"

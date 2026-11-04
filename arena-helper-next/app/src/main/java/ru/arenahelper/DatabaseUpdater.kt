@@ -22,7 +22,9 @@ object DatabaseUpdater {
    var ok=false
    val message=try {
     val result=download()
-    retainMissingHeroStats(result,Catalog.read(app))
+    val previous=Catalog.read(app)
+    retainMissingHeroStats(result,previous)
+    ArtReader.update(app,result,previous)
     val atomic=AtomicFile(File(app.filesDir,"catalog-update.bin"))
     val stream=atomic.startWrite()
     try {

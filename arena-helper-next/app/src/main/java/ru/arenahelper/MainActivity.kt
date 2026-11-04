@@ -17,7 +17,7 @@ class MainActivity : Activity() {
   val column=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(24,36,24,24) }
   fun text(s:String,size:Float=17f){column.addView(TextView(this).apply{text=s;textSize=size;setTextColor(Color.WHITE);setPadding(0,12,0,12)})}
   fun button(s:String,action:()->Unit):Button {val b=Button(this).apply{text=s;setOnClickListener{action()}};column.addView(b);return b}
-  text("Arena Helper RU 1.1.4",26f)
+  text("Arena Helper RU 1.2.0",26f)
   text("1. После ротации нажмите «Обновить базы».\n2. Нажмите «Начать», разрешите оверлей и захват экрана.\n3. Откройте обычную Арену Hearthstone.\n4. Первые 14 карт: только сила. С 15-й: 70% сила + 30% манакривая. Смотрите счётчик колоды.\n5. Если автоматический выбор учтён неверно, коснитесь выбранной карты на панели. «↺» начинает новый драфт.")
   button("Начать") {
    if(!Settings.canDrawOverlays(this)){startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:$packageName")));return@button}
@@ -33,7 +33,7 @@ class MainActivity : Activity() {
   button("Остановить") {stopService(Intent(this,CaptureService::class.java))}
   column.addView(info)
   runCatching {Catalog.read(this)}.onSuccess {info.text="База: ${it.optString("retrievedAt").take(10)} • ${it.getJSONArray("cards").length()} карт"}.onFailure{info.text="Ошибка базы: ${it.message}"}
-  text("OCR работает на телефоне. Интернет используется только для обновления публичных данных. Перезапустите захват после обновления. При неизвестной манакривой используется только сила.",14f)
+  text("Карты и герои определяются по рисункам на телефоне. Интернет используется только для обновления публичных данных. Перезапустите захват после обновления. Коснитесь счётчика, чтобы исправить размер колоды или выбрать класс.",14f)
   setContentView(ScrollView(this).apply{addView(column);fitsSystemWindows=true})
  }
  private fun launchCapture() {

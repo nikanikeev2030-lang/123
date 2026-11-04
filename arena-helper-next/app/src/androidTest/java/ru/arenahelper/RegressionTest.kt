@@ -3,7 +3,6 @@ import android.graphics.*
 import android.content.Intent
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import com.googlecode.tesseract.android.TessBaseAPI
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -12,48 +11,48 @@ import java.io.File
 
 @RunWith(AndroidJUnit4::class)
 class RegressionTest {
- @Test fun catalogAndLongNativeOcr() {
-  val ctx=InstrumentationRegistry.getInstrumentation().targetContext
-  val catalog=DraftCatalog(ctx);val matcher=CardMatcher(catalog.matcherCards())
-  val dir=File(ctx.cacheDir,"test-ocr/tessdata").apply{mkdirs()}
-  ctx.assets.open("rus.traineddata").use{input->File(dir,"rus.traineddata").outputStream().use{input.copyTo(it)}}
-  val api=TessBaseAPI();assertTrue(api.init(dir.parent,"rus",TessBaseAPI.OEM_LSTM_ONLY))
-  try {
-   for(name in listOf("Мгновенная мультивселенная","Первозданная смотрительница","Темпоральный путешественник")){
-    assertNotNull(catalog.details(name));assertNotNull(catalog.score(name,"shaman"))
-    val b=Bitmap.createBitmap(300,54,Bitmap.Config.ARGB_8888)
-    Canvas(b).apply{drawColor(Color.BLACK);drawText(name,5f,29f,Paint(Paint.ANTI_ALIAS_FLAG).apply{color=Color.WHITE;textSize=16f;typeface=Typeface.create("serif",Typeface.BOLD)})}
-    try{assertEquals(name,OcrEngine.recognize(api,b,matcher)?.card?.name)}finally{b.recycle()}
-   }
-   val b=Bitmap.createBitmap(300,54,Bitmap.Config.ARGB_8888)
-   try{assertNull(OcrEngine.recognize(api,b,matcher))}finally{b.recycle()}
-  }finally{api.recycle()}
+ private fun drawArt(canvas:Canvas,area:RectF,encoded:String) {
+  val bytes=android.util.Base64.decode(encoded,android.util.Base64.DEFAULT)
+  val paint=Paint()
+  for(y in 0 until 8)for(x in 0 until 10) {
+   val start=3*(10*y+x)
+   paint.color=Color.rgb(bytes[start].toInt() and 255,bytes[start+1].toInt() and 255,bytes[start+2].toInt() and 255)
+   canvas.drawRect(area.left+x*area.width()/10,area.top+y*area.height()/8,
+    area.left+(x+1)*area.width()/10,area.top+(y+1)*area.height()/8,paint)
+  }
  }
- @Test fun allElevenHeroesAndMissingMiddleSlot() {
+ @Test fun artworkSlotsAtPhoneAspectWithoutText() {
   val ctx=InstrumentationRegistry.getInstrumentation().targetContext
-  val catalog=DraftCatalog(ctx);val ocr=HeroOcr(catalog)
-  assertEquals(11,catalog.classStats().size)
-  for(hero in catalog.classStats())assertEquals(hero.id,ocr.matchText(hero.label.replace(" ","\n\n"))?.id)
-  assertNull(ocr.matchText("Выберите карту для вашей колоды"))
-  val dir=File(ctx.cacheDir,"hero-test/tessdata").apply {mkdirs()}
-  ctx.assets.open("rus.traineddata").use {input->File(dir,"rus.traineddata").outputStream().use {input.copyTo(it)}}
-  val api=TessBaseAPI();assertTrue(api.init(dir.parent,"rus",TessBaseAPI.OEM_LSTM_ONLY))
-  val heroes=catalog.classStats().toList()
-  try {
-   for(group in heroes.chunked(3)+listOf(listOf(heroes[0],null,heroes.last()))) {
-    val b=Bitmap.createBitmap(1600,900,Bitmap.Config.ARGB_8888)
-    val canvas=Canvas(b);canvas.drawColor(Color.BLACK)
-    val paint=Paint(Paint.ANTI_ALIAS_FLAG).apply {color=Color.WHITE;textSize=27f;typeface=Typeface.create("serif",Typeface.BOLD)}
-    for((slot,hero) in group.withIndex())hero?.label?.split(" ")?.forEachIndexed {line,word ->
-     canvas.drawText(word,slot*1600f/3+80f,540f+line*40,paint)
+  val art=ArtReader(ctx,DraftCatalog(ctx));val refs=ArtReader.bundled(ctx)
+  val ids=listOf("VAC_445","TTN_736","DEEP_016")
+  val names=listOf("Ночь вурдалаков","Посох Примаса","Кварцитовый крушитель")
+  for((w,h) in listOf(2048 to 945,1600 to 900)) {
+   val frame=Bitmap.createBitmap(w,h,Bitmap.Config.ARGB_8888)
+   try {
+    val areas=Regions.defaults(w,h);val canvas=Canvas(frame)
+    for(i in 0..2) {
+     assertNull(art.card(frame,areas[i]))
+     val a=areas[i];drawArt(canvas,RectF(a.left*w+2,a.top*h,a.right*w+2,a.bottom*h),refs.getString(ids[i]))
     }
-    try {
-     val found=ocr.recognize(api,b,100)
-     assertEquals(3,found.size)
-     for(slot in 0..2)assertEquals("Slot $slot of $group",group.getOrNull(slot)?.id,found[slot]?.id)
-    }finally {b.recycle()}
-   }
-  }finally {api.recycle()}
+    assertEquals(names,areas.map {art.card(frame,it)?.card?.name})
+   }finally{frame.recycle()}
+  }
+ }
+ @Test fun allHeroPortraitsKeepTheirSlot() {
+  val ctx=InstrumentationRegistry.getInstrumentation().targetContext
+  val catalog=DraftCatalog(ctx);val reader=ArtReader(ctx,catalog);val refs=ArtReader.bundled(ctx)
+  val heroes=catalog.classStats().map {it.id}
+  for(group in heroes.chunked(3)+listOf(listOf(heroes.first(),null,heroes.last()))) {
+   val w=1280;val h=720;val frame=Bitmap.createBitmap(w,h,Bitmap.Config.ARGB_8888)
+   try {
+    val canvas=Canvas(frame);val areas=Regions.defaults(w,h)
+    for((i,id) in group.withIndex())if(id!=null) {
+     val a=areas[i];val cy=.435f
+     drawArt(canvas,RectF(a.left*w,(cy-a.height()/2)*h,a.right*w,(cy+a.height()/2)*h),refs.getString("hero:"+id))
+    }
+    assertEquals((0..2).map {group.getOrNull(it)},reader.heroSlots(frame).map {it?.id})
+   }finally {frame.recycle()}
+  }
  }
  @Test fun missingHeroStatsKeepLastValidRates() {
   val ctx=InstrumentationRegistry.getInstrumentation().targetContext
@@ -77,6 +76,14 @@ class RegressionTest {
   assertTrue(runCatching{DatabaseUpdater.parseScores("<html>maintenance</html>")}.isFailure)
   assertTrue(runCatching{DatabaseUpdater.requireRegular(JSONObject("{\"selected_params\":[\"ArenaGameTypeFilter.BGT_UNDERGROUND_ARENA\"]}"))}.isFailure)
   val fake=java.io.ByteArrayInputStream(ByteArray(20));assertTrue(runCatching{DatabaseUpdater.readLimited(fake,10)}.isFailure)
+ }
+ @Test fun downloadedReferenceMatchesBundledArt() {
+  val context=InstrumentationRegistry.getInstrumentation().targetContext
+  val actual=android.util.Base64.decode(ArtReader.fetch("VAC_445"),android.util.Base64.DEFAULT)
+  val expected=android.util.Base64.decode(ArtReader.bundled(context).getString("VAC_445"),android.util.Base64.DEFAULT)
+  assertEquals(240,actual.size)
+  val difference=actual.indices.sumOf {kotlin.math.abs((actual[it].toInt() and 255)-(expected[it].toInt() and 255))}
+  assertTrue("Downloaded card art differs from reference",difference/240.0<6)
  }
  @Test fun liveRotationDownloadWritesValidatedCatalog() {
   val ctx=InstrumentationRegistry.getInstrumentation().targetContext
