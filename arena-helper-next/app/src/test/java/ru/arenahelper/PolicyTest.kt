@@ -2,6 +2,19 @@ package ru.arenahelper
 import org.junit.Assert.*
 import org.junit.Test
 class PolicyTest {
+ @Test fun lastOfferMustBeSelectedAndLeaveTheBoard() {
+  val state=LastPick()
+  assertFalse(state.observe(29,3,false,true,0));assertFalse(state.observe(29,3,false,true,650))
+  for(t in listOf(1300L,1950L,2600L)) assertFalse(state.observe(29,0,false,true,t))
+  assertFalse(state.observe(29,3,true,true,3200))
+  assertFalse(state.observe(29,0,false,true,3850));assertFalse(state.observe(29,0,false,true,4500))
+  assertTrue(state.observe(29,0,false,true,5150))
+  assertFalse(state.observe(29,0,false,true,5800))
+  for(t in listOf(0L,650L))state.observe(29,3,true,true,t)
+  assertFalse(state.observe(29,0,false,false,1300))
+  assertFalse(state.observe(29,0,false,true,3000))
+  assertFalse(state.observe(28,3,true,true,4000))
+ }
  @Test fun firstFourteenUseStrength() {for(count in 0..13)assertEquals(60,ScoringPolicy.total(60,100,count))}
  @Test fun lastSixteenUseSeventyThirty() {for(count in 14..29)assertEquals(72,ScoringPolicy.total(60,100,count))}
  @Test fun unknownCurveIsNotFifty() {assertEquals(60,ScoringPolicy.total(60,null,20));assertNull(ScoringPolicy.total(null,100,20))}

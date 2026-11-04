@@ -6,6 +6,17 @@ import java.io.InputStream
 import java.util.zip.GZIPInputStream
 object Catalog {
  fun read(context:Context):JSONObject {
+  val result=readBase(context)
+  val rows=result.getJSONArray("cards")
+  val ids=(0 until rows.length()).mapTo(HashSet()) {rows.getJSONObject(it).getString("cardId")}
+  val extras=context.assets.open("extra.json").bufferedReader().use {JSONObject(it.readText())}.getJSONArray("cards")
+  for(i in 0 until extras.length()) {
+   val row=extras.getJSONObject(i)
+   if(ids.add(row.getString("cardId"))) rows.put(row)
+  }
+  return result
+ }
+ private fun readBase(context:Context):JSONObject {
   val update=File(context.filesDir,"catalog-update.bin")
   if(update.isFile || File(update.path+".bak").isFile) runCatching { android.util.AtomicFile(update).openRead().use(::decode) }.getOrNull()?.let {
    val bundled=context.assets.open("cards.bin").use(::decode)

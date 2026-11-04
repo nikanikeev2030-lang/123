@@ -84,6 +84,8 @@ public final class CaptureService extends Service {
     private String activeHeroKey = "";
     private final List<DraftCatalog.ClassStat> currentHeroes = new ArrayList();
     private ArtReader art;
+    private final LastPick lastPick = new LastPick();
+    private volatile long manualLastPickAt = -10000L;
     private volatile int autoCandidate = -1;
     private volatile String trackedKey = "";
     private volatile List<Match> trackedMatches = new ArrayList();
@@ -222,13 +224,35 @@ public final class CaptureService extends Service {
         this.status.setText("Ошибка кадра: " + exc.getClass().getSimpleName());
     }
 
+    // Hearthstone's wooden side rails persist after the offer disappears. Ignore blank
+    // frames and switches to unrelated apps when deciding whether to stop projection.
+    private boolean hasGameFrame(Bitmap frame) {
+        int width = frame.getWidth(), height = frame.getHeight();
+        float board = Math.min(width, height * 16f / 9f);
+        int brown = 0;
+        for (float edge : new float[]{0.015f, 0.035f, 0.965f, 0.985f})
+            for (float y : new float[]{0.2f, 0.4f, 0.67f, 0.8f}) {
+                int color = frame.getPixel((int)((width-board)/2+edge*board), (int)(height*y));
+                int red = (color >> 16) & 255, green = (color >> 8) & 255, blue = color & 255;
+                if (red > green && green > blue && red - blue > 14 && red > 28) brown++;
+            }
+        return brown >= 4;
+    }
+
+    private void finishDraft() {
+        setDeckCount(30);
+        generation++;
+        Toast.makeText(this, "Колода собрана • 30/30", Toast.LENGTH_SHORT).show();
+        stopSelf();
+    }
+
     private void recognize(Bitmap bitmap, int i, int i2) {
         StringBuilder sb;
         String string;
         String strInferClass;
         Match matchRecognizeRegion;
         final int i3 = this.generation;
-        List<RectF> listLoad = Regions.INSTANCE.load(this, i, i2);
+        List<RectF> listLoad = Regions.INSTANCE.defaults(i, i2);
         List<RectF> listDefaults = Regions.INSTANCE.defaults(i, i2);
         ArrayList<Match> arrayList = new ArrayList();
         boolean z = false;
@@ -245,6 +269,12 @@ public final class CaptureService extends Service {
             if (((Match) it.next()) != null) {
                 i5++;
             }
+        }
+        long now = SystemClock.elapsedRealtime();
+        boolean selection = (autoCandidate >= 0 && now - autoCandidateAt < 2000) || now - manualLastPickAt < 4000;
+        if (lastPick.observe(deckCount, i5, selection, deckCount == 29 && hasGameFrame(bitmap), now)) {
+            main.post(() -> { if (generation == i3 && !paused && !stopped && deckCount == 29) finishDraft(); });
+            return;
         }
         List<DraftCatalog.ClassStat> listRecognize = i5 < 2 ? art.heroSlots(bitmap) : Collections.emptyList();
         ArrayList arrayList2 = new ArrayList();
@@ -567,12 +597,6 @@ public final class CaptureService extends Service {
                 CaptureService.this.m1507lambda$8$ruarenahelperCaptureService(buttonControl, view);
             }
         });
-        control(this.controls, "Зоны").setOnClickListener(new View.OnClickListener() { // from class: ru.arenahelper.CaptureService$$ExternalSyntheticLambda4
-            @Override // android.view.View.OnClickListener
-            public final void onClick(View view) {
-                CaptureService.this.m1508lambda$9$ruarenahelperCaptureService(view);
-            }
-        });
         Button buttonControl2 = control(this.controls, "↺");
         buttonControl2.setContentDescription("Новый драфт");
         buttonControl2.setOnClickListener(new View.OnClickListener() { // from class: ru.arenahelper.CaptureService$$ExternalSyntheticLambda5
@@ -599,6 +623,7 @@ public final class CaptureService extends Service {
 
     
      void m1507lambda$8$ruarenahelperCaptureService(Button button, View view) {
+        lastPick.reset();
         this.paused = !this.paused;
         button.setText(this.paused ? "Пуск" : "Пауза");
         this.status.setText(this.paused ? "Пауза" : "Распознавание продолжено");
@@ -860,6 +885,10 @@ public final class CaptureService extends Service {
         if (i >= this.currentMatches.size() || (match = this.currentMatches.get(i)) == null || (details = this.catalog.details(match.getCard().getName())) == null) {
             return;
         }
+        if (deckCount == 29) {
+            manualLastPickAt = jElapsedRealtime;
+            return;
+        }
         if (trackedKey.equals(manuallyCountedOffer)) return;
         manuallyCountedOffer = trackedKey;
         this.motionActive = false;
@@ -897,6 +926,8 @@ public final class CaptureService extends Service {
     }
 
     private void resetDeck() {
+        lastPick.reset();
+        manualLastPickAt = -10000L;
         this.manuallyCountedOffer = null;
         this.deckCount = 0;
         this.deckCosts.clear();
@@ -924,6 +955,7 @@ public final class CaptureService extends Service {
 
     private void loadDeck() {
         this.deckCount = this.prefs.getInt("deckCount", 0);
+        if (deckCount >= 30) {resetDeck();return;}
         String string = this.prefs.getString("deckCosts", "");
         if (string != null && !string.isEmpty()) {
             for (String str : string.split(",")) {

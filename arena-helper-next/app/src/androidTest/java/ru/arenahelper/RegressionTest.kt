@@ -47,7 +47,7 @@ class RegressionTest {
    try {
     val canvas=Canvas(frame);val areas=Regions.defaults(w,h)
     for((i,id) in group.withIndex())if(id!=null) {
-     val a=areas[i];val cy=.435f
+     val cx=.215f+i*.267f;val a=RectF(cx-.061f,0f,cx+.061f,.138f);val cy=.399f
      drawArt(canvas,RectF(a.left*w,(cy-a.height()/2)*h,a.right*w,(cy+a.height()/2)*h),refs.getString("hero:"+id))
     }
     assertEquals((0..2).map {group.getOrNull(it)},reader.heroSlots(frame).map {it?.id})
