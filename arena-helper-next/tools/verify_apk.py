@@ -15,3 +15,10 @@ with zipfile.ZipFile(sys.argv[1]) as apk:
     portraits=json.loads(gzip.decompress(apk.read('assets/portraits.bin')))
     assert len(portraits)>=700 and len({k.split(':')[0] for k in portraits})==11
     assert all(len(base64.b64decode(v,validate=True))==240 for v in portraits.values())
+
+    variants=json.loads(apk.read('assets/variants.json'))
+    ids={c['cardId'] for c in cards+extra['cards']}
+    assert set(variants)<=ids
+    assert {k for row in variants.values() for k in row}=={'gold','signature','diamond'}
+    assert all(len(base64.b64decode(v,validate=True))==240 for row in variants.values() for v in row.values())
+    assert sum(map(len,variants.values()))==205

@@ -22,6 +22,7 @@ class ArtReader(context:Context, private val catalog:DraftCatalog) {
     init {
         val database = Catalog.read(context)
         val builtIn = bundled(context)
+        val variants=context.assets.open("variants.json").bufferedReader().use {JSONObject(it.readText())}
         val additions = database.optJSONObject("art")
         val rows = database.getJSONArray("cards")
         for (i in 0 until rows.length()) {
@@ -29,6 +30,10 @@ class ArtReader(context:Context, private val catalog:DraftCatalog) {
             val id = row.getString("cardId")
             val encoded = additions?.optString(id)?.takeIf { it.isNotEmpty() } ?: builtIn.optString(id)
             if (encoded.isNotEmpty()) cards.add(Reference(row.getString("name"),decode(encoded)))
+            val treatments=variants.optJSONObject(id)
+            if(treatments!=null) for(kind in treatments.keys()) {
+                cards.add(Reference(row.getString("name"),decode(treatments.getString(kind))))
+            }
             if(builtIn.has("signature:"+id)) cards.add(Reference(row.getString("name"),decode(builtIn.getString("signature:"+id))))
         }
         val skins=context.assets.open("portraits.bin").use { input ->

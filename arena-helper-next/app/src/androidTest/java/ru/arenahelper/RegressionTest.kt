@@ -38,6 +38,24 @@ class RegressionTest {
    }finally{frame.recycle()}
   }
  }
+ @Test fun specialTreatmentsUseOriginalCardIds() {
+  val ctx=InstrumentationRegistry.getInstrumentation().targetContext
+  val catalog=DraftCatalog(ctx);val reader=ArtReader(ctx,catalog)
+  val refs=ctx.assets.open("variants.json").bufferedReader().use {JSONObject(it.readText())}
+  val rows=Catalog.read(ctx).getJSONArray("cards")
+  val names=(0 until rows.length()).map {rows.getJSONObject(it)}.associate {it.getString("cardId") to it.getString("name")}
+  val choices=listOf("CS2_042" to "gold","GDB_310" to "signature","WORK_027" to "diamond")
+  val frame=Bitmap.createBitmap(2048,945,Bitmap.Config.ARGB_8888)
+  try {
+   val canvas=Canvas(frame);val slots=Regions.defaults(frame.width,frame.height)
+   for((index,choice) in choices.withIndex()) {
+    val rect=slots[index]
+    drawArt(canvas,RectF(rect.left*2048+2,rect.top*945+1,rect.right*2048+2,rect.bottom*945+1),
+     refs.getJSONObject(choice.first).getString(choice.second))
+    assertEquals(names[choice.first],reader.card(frame,rect)?.card?.name)
+   }
+  }finally{frame.recycle()}
+ }
  @Test fun allHeroPortraitsKeepTheirSlot() {
   val ctx=InstrumentationRegistry.getInstrumentation().targetContext
   val catalog=DraftCatalog(ctx);val reader=ArtReader(ctx,catalog);val refs=ArtReader.bundled(ctx)
