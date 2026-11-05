@@ -11,7 +11,7 @@ with zipfile.ZipFile(sys.argv[1]) as apk:
     print(f'{len(cards)} cards, 11 hero fingerprints, no OCR model or native libraries.')
 
     extra=json.loads(apk.read('assets/extra.json'))
-    assert {c['cardId'] for c in extra['cards']} >= {'REV_023','TIME_EVENT_999','TLC_EVENT_400'}
+    assert {c['cardId'] for c in extra['cards']} >= {'REV_023','TIME_EVENT_999','TLC_EVENT_400','TIME_EVENT_300'}
     portraits=json.loads(gzip.decompress(apk.read('assets/portraits.bin')))
     assert len(portraits)>=700 and len({k.split(':')[0] for k in portraits})==11
     assert all(len(base64.b64decode(v,validate=True))==240 for v in portraits.values())
@@ -22,3 +22,5 @@ with zipfile.ZipFile(sys.argv[1]) as apk:
     assert {k for row in variants.values() for k in row}=={'gold','signature','diamond'}
     assert all(len(base64.b64decode(v,validate=True))==240 for row in variants.values() for v in row.values())
     assert sum(map(len,variants.values()))==205
+
+    assert len(base64.b64decode(extra['art']['TIME_EVENT_300'],validate=True))==240

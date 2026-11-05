@@ -6,8 +6,8 @@ android {
   applicationId = "ru.arenahelper"
   minSdk = 30
   targetSdk = 35
-  versionCode = 25
-  versionName = "1.2.5"
+  versionCode = 26
+  versionName = "1.2.6"
   testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
  }
  compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
