@@ -123,7 +123,7 @@ class RegressionTest {
   val ctx=instrumentation.targetContext
   val device=androidx.test.uiautomator.UiDevice.getInstance(instrumentation)
   device.executeShellCommand("appops set ${ctx.packageName} SYSTEM_ALERT_WINDOW allow")
-  device.executeShellCommand("pm grant ${ctx.packageName} android.permission.POST_NOTIFICATIONS")
+  if(android.os.Build.VERSION.SDK_INT>=33) device.executeShellCommand("pm grant ${ctx.packageName} android.permission.POST_NOTIFICATIONS")
   device.setOrientationLeft()
   try {
    instrumentation.startActivitySync(Intent(ctx,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
