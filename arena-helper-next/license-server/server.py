@@ -55,8 +55,8 @@ class Store:
         with self.connect() as db:
             db.execute('BEGIN IMMEDIATE')
             row = db.execute('SELECT revoked,lease_until FROM licenses WHERE hash=?', (digest(key.encode()),)).fetchone()
-            if not row or not row[0] or row[1] > now:
-                raise ValueError('Revoke first and wait up to 15 minutes before transfer')
+            if not row or not row[0] or row[1] + 60 > now:
+                raise ValueError('Revoke first and wait up to 16 minutes before transfer')
             db.execute('UPDATE licenses SET device=NULL,revoked=0,lease_until=0 WHERE hash=?', (digest(key.encode()),))
 
     def activate(self, body, now=None):

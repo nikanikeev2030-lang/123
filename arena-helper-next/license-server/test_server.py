@@ -68,10 +68,10 @@ class LicenseTests(unittest.TestCase):
         self.store.activate(proof(self.key,self.phone),1000)
         with self.assertRaises(ValueError): self.store.reset(self.key,2000)
         self.store.revoke(self.key)
-        with self.assertRaises(ValueError): self.store.reset(self.key,1899)
-        self.store.reset(self.key,1900)
-        self.store.activate(proof(self.key,self.other,1900),1900)
-        with self.assertRaises(Denied): self.store.activate(proof(self.key,self.phone,1900),1900)
+        with self.assertRaises(ValueError): self.store.reset(self.key,1959)
+        self.store.reset(self.key,1960)
+        self.store.activate(proof(self.key,self.other,1960),1960)
+        with self.assertRaises(Denied): self.store.activate(proof(self.key,self.phone,1960),1960)
 
     def test_clock_and_malformed_requests(self):
         for body in ({},None,{'timestamp':'oops'},proof(self.key,self.phone,10)):
