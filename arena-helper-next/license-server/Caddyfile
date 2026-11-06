@@ -1,0 +1,7 @@
+{$LICENSE_DOMAIN} {
+    request_body {
+        max_size 4KB
+    }
+    reverse_proxy api:8000
+    header Cache-Control "no-store"
+}

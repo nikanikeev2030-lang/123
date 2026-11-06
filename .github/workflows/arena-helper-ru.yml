@@ -32,6 +32,11 @@ jobs:
           gradle-version: '8.13'
       - name: Install Android SDK
         run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Single-device server tests
+        run: |
+          python3 -m pip install -r license-server/requirements.txt
+          cd license-server
+          python3 -m unittest -v
       - name: Tests, Android Lint and APK
         run: gradle --no-daemon testDebugUnitTest lintDebug assembleDebug
       - name: Verify installable APK

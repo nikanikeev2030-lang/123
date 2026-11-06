@@ -116,6 +116,7 @@ public final class CaptureService extends Service {
     @Override // android.app.Service
     public int onStartCommand(Intent intent,int flags,int startId) {
         if(intent!=null && "STOP".equals(intent.getAction())){stopSelf();return START_NOT_STICKY;}
+        if(!DeviceLicense.isValid()){stopSelf();return START_NOT_STICKY;}
         if(projection!=null)return START_NOT_STICKY;
         try {
             Intent data=intent==null?null:(Build.VERSION.SDK_INT>=33?intent.getParcelableExtra("data",Intent.class):intent.getParcelableExtra("data"));
@@ -129,9 +130,28 @@ public final class CaptureService extends Service {
                 @Override public void onCapturedContentResize(int w,int h){worker.post(() -> {if(art!=null)resize(w,h);});}
             },main);
             showPanel();worker.post(() -> initialize());
+            main.postDelayed(licenseWatch, 60000);
         }catch(Exception e){fail(e);}
         return START_NOT_STICKY;
     }
+
+    private volatile boolean licenseRefreshRunning = false;
+    private final Runnable licenseWatch = new Runnable() {
+        @Override public void run() {
+            if (!DeviceLicense.isValid()) {
+                Toast.makeText(CaptureService.this,"Проверка лицензии истекла. Откройте помощник и подтвердите доступ.",Toast.LENGTH_LONG).show();
+                stopSelf(); return;
+            }
+            if (DeviceLicense.needsRefresh() && !licenseRefreshRunning) {
+                licenseRefreshRunning = true;
+                new Thread(() -> {
+                    DeviceLicense.refresh(CaptureService.this);
+                    licenseRefreshRunning = false;
+                },"license-refresh").start();
+            }
+            main.postDelayed(this,60000);
+        }
+    };
 
     public void initialize() {
         try {
@@ -995,6 +1015,7 @@ public final class CaptureService extends Service {
 
     @Override // android.app.Service
     public void onDestroy() {
+        main.removeCallbacks(licenseWatch);
         this.stopped = true;
         this.generation++;
         this.motionActive = false;

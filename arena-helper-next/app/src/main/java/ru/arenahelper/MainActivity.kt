@@ -17,9 +17,28 @@ class MainActivity : Activity() {
   val column=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(24,36,24,24) }
   fun text(s:String,size:Float=17f){column.addView(TextView(this).apply{text=s;textSize=size;setTextColor(Color.WHITE);setPadding(0,12,0,12)})}
   fun button(s:String,action:()->Unit):Button {val b=Button(this).apply{text=s;setOnClickListener{action()}};column.addView(b);return b}
-  text("Arena Helper RU 1.2.6",26f)
+  text("Arena Helper RU 1.3.0",26f)
   text("1. После ротации нажмите «Обновить базы».\n2. Нажмите «Начать», разрешите оверлей и захват экрана.\n3. Откройте обычную Арену Hearthstone.\n4. Первые 14 карт: только сила. С 15-й: 70% сила + 30% манакривая. Смотрите счётчик колоды.\n5. Если автоматический выбор учтён неверно, коснитесь выбранной карты на панели. «↺» начинает новый драфт.")
+  val licenseInfo=TextView(this).apply {setTextColor(Color.WHITE);text="Лицензия на один телефон"}
+  column.addView(licenseInfo)
+  val licenseInput=EditText(this).apply {
+   hint="Код лицензии AH-…";isSingleLine=true
+   inputType=android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+   setText(DeviceLicense.savedKey(this@MainActivity));setTextColor(Color.WHITE)
+  }
+  column.addView(licenseInput)
+  lateinit var activate:Button
+  activate=button("Активировать лицензию") {
+   activate.isEnabled=false;licenseInfo.text="Проверяем лицензию…"
+   val enteredKey=licenseInput.text.toString()
+   Thread {
+    val result=DeviceLicense.activate(this,enteredKey)
+    runOnUiThread {activate.isEnabled=true;licenseInfo.text=result}
+   }.start()
+  }
+  text("Одна лицензия — один телефон. Для запуска и периодической проверки нужен интернет. После удаления приложения или замены телефона обратитесь к продавцу для переноса.",14f)
   button("Начать") {
+   if(!DeviceLicense.isValid()) {licenseInfo.text="Сначала активируйте лицензию.";return@button}
    if(!Settings.canDrawOverlays(this)){startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:$packageName")));return@button}
    if(Build.VERSION.SDK_INT>=33 && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)!=android.content.pm.PackageManager.PERMISSION_GRANTED) requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS),9) else launchCapture()
   }.contentDescription="Начать захват"
@@ -33,10 +52,11 @@ class MainActivity : Activity() {
   button("Остановить") {stopService(Intent(this,CaptureService::class.java))}
   column.addView(info)
   runCatching {Catalog.read(this)}.onSuccess {info.text="База: ${it.optString("retrievedAt").take(10)} • ${it.getJSONArray("cards").length()} карт"}.onFailure{info.text="Ошибка базы: ${it.message}"}
-  text("Карты и герои определяются по рисункам на телефоне. Интернет используется только для обновления публичных данных. Перезапустите захват после обновления. Коснитесь счётчика, чтобы исправить размер колоды или выбрать класс.",14f)
+  text("Карты и герои определяются по рисункам на телефоне. Интернет используется для проверки лицензии и обновления публичных данных. Перезапустите захват после обновления. Коснитесь счётчика, чтобы исправить размер колоды или выбрать класс.",14f)
   setContentView(ScrollView(this).apply{addView(column);fitsSystemWindows=true})
  }
  private fun launchCapture() {
+  if(!DeviceLicense.isValid()) {Toast.makeText(this,"Сначала активируйте лицензию",Toast.LENGTH_LONG).show();return}
   val manager=getSystemService(MediaProjectionManager::class.java)
   val capture=if(Build.VERSION.SDK_INT>=34) manager.createScreenCaptureIntent(android.media.projection.MediaProjectionConfig.createConfigForDefaultDisplay()) else manager.createScreenCaptureIntent()
   startActivityForResult(capture,100)
@@ -48,7 +68,7 @@ class MainActivity : Activity() {
  @Deprecated("Platform result API")
  override fun onActivityResult(requestCode:Int,resultCode:Int,data:Intent?) {
   super.onActivityResult(requestCode,resultCode,data)
-  if(requestCode==100 && resultCode==RESULT_OK && data!=null) {
+  if(requestCode==100 && resultCode==RESULT_OK && data!=null && DeviceLicense.isValid()) {
    stopService(Intent(this,CaptureService::class.java))
    startForegroundService(Intent(this,CaptureService::class.java).putExtra("resultCode",resultCode).putExtra("data",data))
    Toast.makeText(this,"Откройте Hearthstone → Арена",Toast.LENGTH_LONG).show()

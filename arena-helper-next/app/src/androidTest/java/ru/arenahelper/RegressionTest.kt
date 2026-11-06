@@ -119,6 +119,7 @@ class RegressionTest {
   }finally{file.delete()}
  }
  @Test fun projectionConsentStartsOverlayAndStopsCleanly() {
+  LicenseTest.authorize()
   val instrumentation=InstrumentationRegistry.getInstrumentation()
   val ctx=instrumentation.targetContext
   val device=androidx.test.uiautomator.UiDevice.getInstance(instrumentation)
