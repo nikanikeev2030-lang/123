@@ -138,8 +138,23 @@ class RegressionTest {
     start=device.wait(androidx.test.uiautomator.Until.findObject(control),5000)
    }
    assertNotNull("Launcher button",start);start.click()
-   val consent=device.wait(androidx.test.uiautomator.Until.findObject(androidx.test.uiautomator.By.res("android","button1")),10000)
-   assertNotNull("System projection consent",consent);consent.click()
+   var consent=device.wait(androidx.test.uiautomator.Until.findObject(androidx.test.uiautomator.By.res("android","button1")),3000)
+   val confirm=androidx.test.uiautomator.By.pkg("com.android.systemui").text(java.util.regex.Pattern.compile("(?i)start now|start recording|share screen|start|начать|начать запись"))
+   repeat(3) {
+    if(consent==null) {
+     consent=device.findObject(confirm)
+     if(consent==null) {
+      device.findObject(androidx.test.uiautomator.By.pkg("com.android.systemui").scrollable(true))?.scroll(androidx.test.uiautomator.Direction.DOWN,0.8f)
+      device.waitForIdle()
+      consent=device.findObject(androidx.test.uiautomator.By.res("android","button1")) ?: device.findObject(confirm)
+     }
+    }
+   }
+   if(consent==null) {
+    val dump=java.io.ByteArrayOutputStream();device.dumpWindowHierarchy(dump)
+    android.util.Log.e("ProjectionDialog",dump.toString("UTF-8"))
+   }
+   assertNotNull("System projection consent",consent);consent!!.click()
    assertTrue("Overlay counter appears",device.wait(androidx.test.uiautomator.Until.hasObject(androidx.test.uiautomator.By.text("0/30")),15000))
    assertTrue("Projection foreground service running",device.executeShellCommand("dumpsys activity services ru.arenahelper").contains("CaptureService"))
   }finally{ctx.stopService(Intent(ctx,CaptureService::class.java));device.unfreezeRotation()}
