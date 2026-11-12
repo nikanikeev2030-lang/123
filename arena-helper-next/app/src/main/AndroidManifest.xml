@@ -4,7 +4,7 @@
  <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION"/>
  <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
- <application android:icon="@drawable/ic_arena" android:label="Arena Helper RU" android:theme="@style/AppTheme" android:allowBackup="false" android:supportsRtl="true">
+ <application android:icon="@drawable/ic_arena" android:label="@string/app_name" android:theme="@style/AppTheme" android:allowBackup="false" android:supportsRtl="true">
   <activity android:name=".MainActivity" android:exported="true">
    <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
   </activity>

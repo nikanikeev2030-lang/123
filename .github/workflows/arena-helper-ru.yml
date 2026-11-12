@@ -1,7 +1,7 @@
-name: Arena Helper RU APK
+name: Помощник на Арене Hearthstone APK
 on:
   push:
-    branches: [arena-helper-ru]
+    branches: [arena-helper-ui-1.2.7]
   workflow_dispatch:
 permissions:
   contents: read
@@ -39,8 +39,8 @@ jobs:
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose app/build/outputs/apk/debug/app-debug.apk
           "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -P 16 -v 4 app/build/outputs/apk/debug/app-debug.apk
           python3 tools/verify_apk.py app/build/outputs/apk/debug/app-debug.apk
-          cp app/build/outputs/apk/debug/app-debug.apk Arena-Helper-RU.apk
-          sha256sum Arena-Helper-RU.apk > Arena-Helper-RU.apk.sha256
+          cp app/build/outputs/apk/debug/app-debug.apk Pomoshchnik-na-Arene-Hearthstone.apk
+          sha256sum Pomoshchnik-na-Arene-Hearthstone.apk > Pomoshchnik-na-Arene-Hearthstone.apk.sha256
       - name: Enable emulator acceleration
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -54,15 +54,22 @@ jobs:
           profile: pixel_2
           disable-animations: true
           working-directory: arena-helper-next
-          script: gradle --no-daemon connectedDebugAndroidTest
+          script: |
+            gradle --no-daemon connectedDebugAndroidTest
+            adb shell am force-stop ru.arenahelper
+            adb shell am start -n ru.arenahelper/.MainActivity
+            sleep 2
+            adb shell screencap -p /sdcard/launcher.png
+            adb pull /sdcard/launcher.png launcher.png
       - uses: actions/upload-artifact@v4
         if: matrix.api == 35
         with:
-          name: Arena-Helper-RU-APK
+          name: Pomoshchnik-na-Arene-Hearthstone-APK
           path: |
-            arena-helper-next/Arena-Helper-RU.apk
-            arena-helper-next/Arena-Helper-RU.apk.sha256
+            arena-helper-next/Pomoshchnik-na-Arene-Hearthstone.apk
+            arena-helper-next/Pomoshchnik-na-Arene-Hearthstone.apk.sha256
             arena-helper-next/README_RU.md
+            arena-helper-next/launcher.png
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         if: always()

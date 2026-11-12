@@ -121,7 +121,7 @@ public final class CaptureService extends Service {
             Intent data=intent==null?null:(Build.VERSION.SDK_INT>=33?intent.getParcelableExtra("data",Intent.class):intent.getParcelableExtra("data"));
             if(data==null)throw new IllegalStateException("Нет разрешения на захват");
             PendingIntent stop=PendingIntent.getService(this,1,new Intent(this,CaptureService.class).setAction("STOP"),PendingIntent.FLAG_IMMUTABLE);
-            startForeground(1,new Notification.Builder(this,"capture").setContentTitle("Arena Helper RU").setContentText("Локальное распознавание экрана включено").setSmallIcon(android.R.drawable.ic_menu_view).addAction(new Notification.Action.Builder((Icon)null,"Остановить",stop).build()).setOngoing(true).build(),android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION);
+            startForeground(1,new Notification.Builder(this,"capture").setContentTitle(getString(R.string.app_name)).setContentText("Локальное распознавание экрана включено").setSmallIcon(android.R.drawable.ic_menu_view).addAction(new Notification.Action.Builder((Icon)null,"Остановить",stop).build()).setOngoing(true).build(),android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION);
             projection=getSystemService(MediaProjectionManager.class).getMediaProjection(intent.getIntExtra("resultCode",0),data);
             if(projection==null)throw new IllegalStateException("MediaProjection не получен");
             projection.registerCallback(new MediaProjection.Callback(){
