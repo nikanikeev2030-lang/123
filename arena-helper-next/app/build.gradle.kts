@@ -7,8 +7,8 @@ android {
   applicationId = "ru.arenahelper"
   minSdk = 30
   targetSdk = 35
-  versionCode = 27
-  versionName = "1.3.0"
+  versionCode = 29
+  versionName = "1.3.1"
   val licenseUrl = providers.gradleProperty("LICENSE_URL").orElse("").get()
   require(licenseUrl.isEmpty() || Regex("https://[A-Za-z0-9.-]+(?::[0-9]+)?/v1/activate").matches(licenseUrl)) { "LICENSE_URL must be an HTTPS activation URL" }
   buildConfigField("String", "LICENSE_URL", "\"$licenseUrl\"")
