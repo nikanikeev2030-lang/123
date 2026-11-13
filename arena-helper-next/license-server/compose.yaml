@@ -4,6 +4,12 @@ services:
     restart: unless-stopped
     volumes:
       - licenses:/data
+  updater:
+    build: .
+    restart: unless-stopped
+    command: ["python", "update_database.py", "--loop"]
+    volumes:
+      - licenses:/data
   https:
     image: caddy:2.10.2-alpine
     restart: unless-stopped

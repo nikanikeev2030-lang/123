@@ -25,6 +25,20 @@ class LicenseTest {
         assertNotEquals(proof.getString("nonce"),second.getString("nonce"))
     }
 
+    @Test fun serverDataSignatureBindsActionAndPayload() {
+        val payload=JSONObject().put("cards","example").toString()
+        val p=DeviceLicense.proof(TEST_KEY,"analyze",payload)
+        val pub=Base64.decode(p.getString("publicKey"),Base64.NO_WRAP)
+        val tail="${hash(TEST_KEY.toByteArray())}\n${hash(pub)}\n${p.getLong("timestamp")}\n${p.getString("nonce")}"
+        fun verify(action:String,body:String):Boolean {
+            val verifier=Signature.getInstance("SHA256withECDSA")
+            verifier.initVerify(KeyFactory.getInstance("EC").generatePublic(X509EncodedKeySpec(pub)))
+            verifier.update("arena-license-v2\n$action\n${hash(body.toByteArray())}\n$tail".toByteArray())
+            return verifier.verify(Base64.decode(p.getString("signature"),Base64.NO_WRAP))
+        }
+        assertTrue(verify("analyze",payload));assertFalse(verify("info",payload));assertFalse(verify("analyze","{}"))
+    }
+
     @Test fun activationAndRevocationControlAccess() {
         authorize()
         assertTrue(DeviceLicense.isValid())

@@ -14,11 +14,16 @@ class MainActivity : Activity() {
  private val labels=listOf("Рыцарь смерти","Охотник на демонов","Друид","Охотник","Маг","Паладин","Жрец","Разбойник","Шаман","Чернокнижник","Воин")
  override fun onCreate(savedInstanceState:Bundle?) {
   super.onCreate(savedInstanceState)
+  Catalog.removeLegacy(this)
   val column=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(24,36,24,24) }
   fun text(s:String,size:Float=17f){column.addView(TextView(this).apply{text=s;textSize=size;setTextColor(Color.WHITE);setPadding(0,12,0,12)})}
   fun button(s:String,action:()->Unit):Button {val b=Button(this).apply{text=s;setOnClickListener{action()}};column.addView(b);return b}
   text(getString(R.string.app_name),26f)
-  text("1. После ротации нажмите «Обновить базы».\n2. Нажмите «Начать», разрешите оверлей и захват экрана.\n3. Откройте обычную Арену Hearthstone.\n4. Первые 14 карт: только сила. С 15-й: 70% сила + 30% манакривая. Смотрите счётчик колоды.")
+  text("1. Базы обновляются автоматически на сервере. Для работы нужен интернет.\n2. Нажмите «Начать», разрешите оверлей и захват экрана.\n3. Откройте обычную Арену Hearthstone.\n4. Первые 14 карт: только сила. С 15-й: 70% сила + 30% манакривая. Смотрите счётчик колоды.")
+  val info=TextView(this).apply {setTextColor(Color.WHITE);setPadding(0,12,0,12);setSingleLine(true);ellipsize=android.text.TextUtils.TruncateAt.END}
+  fun showDatabaseInfo() {
+   runCatching {Catalog.read(this)}.onSuccess {info.text=if(it.optInt("cardCount")>0) "База: ${it.optString("retrievedAt").take(10)} • ${it.optInt("cardCount")} карт" else "База: сервер • ещё не проверена"}.onFailure{info.text="База: недоступна"}
+  }
   val licenseInfo=TextView(this).apply {setTextColor(Color.WHITE);text="Лицензия на один телефон"}
   column.addView(licenseInfo)
   val licenseInput=EditText(this).apply {
@@ -33,7 +38,8 @@ class MainActivity : Activity() {
    val enteredKey=licenseInput.text.toString()
    Thread {
     val result=DeviceLicense.activate(this,enteredKey)
-    runOnUiThread {activate.isEnabled=true;licenseInfo.text=result}
+    if(DeviceLicense.isValid()) runCatching {Catalog.accept(DeviceLicense.request(this,"info",org.json.JSONObject()))}
+    runOnUiThread {activate.isEnabled=true;licenseInfo.text=result;showDatabaseInfo()}
    }.start()
   }
   text("Одна лицензия — один телефон. Для запуска и периодической проверки нужен интернет. После удаления приложения или замены телефона обратитесь к продавцу для переноса.",14f)
@@ -42,15 +48,11 @@ class MainActivity : Activity() {
    if(!Settings.canDrawOverlays(this)){startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:$packageName")));return@button}
    if(Build.VERSION.SDK_INT>=33 && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)!=android.content.pm.PackageManager.PERMISSION_GRANTED) requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS),9) else launchCapture()
   }.contentDescription="Начать захват"
-  val info=TextView(this).apply {setTextColor(Color.WHITE);setPadding(0,12,0,12);setSingleLine(true);ellipsize=android.text.TextUtils.TruncateAt.END}
-  fun showDatabaseInfo() {
-   runCatching {Catalog.read(this)}.onSuccess {info.text="База: ${it.optString("retrievedAt").take(10)} • ${it.getJSONArray("cards").length()} карт"}.onFailure{info.text="База: недоступна"}
-  }
   lateinit var update:Button
-  update=button("Обновить базы") {
+  update=button("Проверить базу сервера") {
    update.isEnabled=false;update.text="Обновление…"
-   val started=DatabaseUpdater.update(this) { _,message -> runOnUiThread {update.isEnabled=true;update.text="Обновить базы";showDatabaseInfo();Toast.makeText(this,message,Toast.LENGTH_LONG).show()} }
-   if(!started){update.isEnabled=true;update.text="Обновить базы";Toast.makeText(this,"Обновление уже выполняется",Toast.LENGTH_SHORT).show()}
+   val started=DatabaseUpdater.update(this) { _,message -> runOnUiThread {update.isEnabled=true;update.text="Проверить базу сервера";showDatabaseInfo();Toast.makeText(this,message,Toast.LENGTH_LONG).show()} }
+   if(!started){update.isEnabled=true;update.text="Проверить базу сервера";Toast.makeText(this,"Обновление уже выполняется",Toast.LENGTH_SHORT).show()}
   }
   button("Остановить") {stopService(Intent(this,CaptureService::class.java))}
   column.addView(info)

@@ -51,7 +51,10 @@ public final class DraftCatalog {
     }
 
     public DraftCatalog(Context context) throws Exception {
-        JSONObject jSONObject = Catalog.INSTANCE.read(context);
+        merge(Catalog.INSTANCE.read(context));
+    }
+
+    public synchronized void merge(JSONObject jSONObject) throws Exception {
         JSONArray jSONArray = jSONObject.getJSONArray("cards");
         for (int i = 0; i < jSONArray.length(); i++) {
             JSONObject jSONObject2 = jSONArray.getJSONObject(i);
@@ -105,19 +108,19 @@ public final class DraftCatalog {
         }
     }
 
-    public Collection<ClassStat> classStats() {
-        return this.stats.values();
+    public synchronized Collection<ClassStat> classStats() {
+        return new ArrayList<>(this.stats.values());
     }
 
-    public Details details(String str) {
+    public synchronized Details details(String str) {
         return this.cards.get(TextNormalizer.normalize(str));
     }
 
-    public PackageInfo packageFor(String str) {
+    public synchronized PackageInfo packageFor(String str) {
         return this.packages.get(TextNormalizer.normalize(str));
     }
 
-    public ClassStat stat(String str) {
+    public synchronized ClassStat stat(String str) {
         return this.stats.get(str);
     }
 

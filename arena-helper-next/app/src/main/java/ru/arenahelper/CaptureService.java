@@ -224,7 +224,7 @@ public final class CaptureService extends Service {
             if(image==null || stopped || paused || calibrating || art==null)return;
             if(getResources().getConfiguration().orientation!=2){main.post(() -> m1502lambda$3$ruarenahelperCaptureService());return;}
             int w=image.getWidth(),h=image.getHeight();if(w<h)return;
-            long now=SystemClock.elapsedRealtime();boolean motion=motionActive && now-lastMotionFrame>=90;boolean scan=now-lastFrame>=650;
+            long now=SystemClock.elapsedRealtime();boolean motion=motionActive && now-lastMotionFrame>=90;boolean scan=now-lastFrame>=1000;
             if(!motion && !scan)return;
             if(image.getPlanes().length==0)return;Image.Plane p=image.getPlanes()[0];
             if(motion){lastMotionFrame=now;updateMotion(p,w,h,now);}
@@ -241,7 +241,11 @@ public final class CaptureService extends Service {
 
     
      void m1503lambda$4$ruarenahelperCaptureService(Exception exc) {
-        this.status.setText("Ошибка кадра: " + exc.getClass().getSimpleName());
+        this.status.setText("Нет ответа сервера • проверьте интернет и лицензию");
+        this.motionActive=false;this.autoCandidate=-1;this.previousKey="";this.stable=0;
+        this.lastPick.reset();
+        this.currentMatches.clear();this.currentHeroes.clear();
+        for (TextView cell : this.cells) {cell.setText("Нет данных сервера");cell.setBackgroundColor(0xff34252d);}
     }
 
     // Hearthstone's wooden side rails persist after the offer disappears. Ignore blank
@@ -270,19 +274,12 @@ public final class CaptureService extends Service {
         StringBuilder sb;
         String string;
         String strInferClass;
-        Match matchRecognizeRegion;
         final int i3 = this.generation;
-        List<RectF> listLoad = Regions.INSTANCE.defaults(i, i2);
-        List<RectF> listDefaults = Regions.INSTANCE.defaults(i, i2);
+        List<RectF> areas = Regions.INSTANCE.defaults(i, i2);
+        art.analyze(bitmap, areas);
         ArrayList<Match> arrayList = new ArrayList();
         boolean z = false;
-        for (int i4 = 0; i4 < 3; i4++) {
-            Match matchRecognizeRegion2 = art.card(bitmap, listLoad.get(i4));
-            if ((matchRecognizeRegion2 == null || matchRecognizeRegion2.getConfidence() < 0.9d) && !same(listLoad.get(i4), listDefaults.get(i4)) && (matchRecognizeRegion = art.card(bitmap, listDefaults.get(i4))) != null && (matchRecognizeRegion2 == null || matchRecognizeRegion.getConfidence() > matchRecognizeRegion2.getConfidence())) {
-                matchRecognizeRegion2 = matchRecognizeRegion;
-            }
-            arrayList.add(matchRecognizeRegion2);
-        }
+        for (int slot=0;slot<3;slot++) arrayList.add(art.cardAt(slot));
         Iterator it = arrayList.iterator();
         int i5 = 0;
         while (it.hasNext()) {
@@ -296,7 +293,7 @@ public final class CaptureService extends Service {
             main.post(() -> { if (generation == i3 && !paused && !stopped && deckCount == 29) finishDraft(); });
             return;
         }
-        List<DraftCatalog.ClassStat> listRecognize = i5 < 2 ? art.heroSlots(bitmap) : Collections.emptyList();
+        List<DraftCatalog.ClassStat> listRecognize = i5 < 2 ? art.heroSlots() : Collections.emptyList();
         ArrayList arrayList2 = new ArrayList();
         for (Match match : arrayList) {
             arrayList2.add(match == null ? "?" : match.getCard().getName());

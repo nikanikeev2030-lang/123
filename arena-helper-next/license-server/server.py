@@ -59,7 +59,8 @@ class Store:
                 raise ValueError('Revoke first and wait up to 16 minutes before transfer')
             db.execute('UPDATE licenses SET device=NULL,revoked=0,lease_until=0 WHERE hash=?', (digest(key.encode()),))
 
-    def activate(self, body, now=None):
+    def activate(self, body, now=None, action="activate", payload=""):
+
         now = int(time.time()) if now is None else now
         try:
             key, pub, stamp, nonce, signature = (body[k] for k in ('license','publicKey','timestamp','nonce','signature'))
@@ -76,6 +77,8 @@ class Store:
             device = digest(public_bytes)
             key_hash = digest(key.encode())
             message = f'arena-license-v1\n{key_hash}\n{device}\n{stamp}\n{nonce}'.encode()
+            if action != 'activate':
+                message = f'arena-license-v2\n{action}\n{digest(payload.encode())}\n{key_hash}\n{device}\n{stamp}\n{nonce}'.encode()
             public.verify(base64.b64decode(signature,validate=True), message, ec.ECDSA(hashes.SHA256()))
         except Denied:
             raise
@@ -86,9 +89,13 @@ class Store:
             row = db.execute('SELECT device,revoked FROM licenses WHERE hash=?',(key_hash,)).fetchone()
             if not row or row[1]:
                 raise Denied('LICENSE_INVALID')
+            if action != 'activate' and row[0] is None:
+                raise Denied('ACTIVATION_REQUIRED')
             if row[0] is not None and row[0] != device:
                 raise Denied('OTHER_DEVICE')
             db.execute('DELETE FROM nonces WHERE expires < ?', (now,))
+            recent=db.execute('SELECT count(*) FROM nonces WHERE device=? AND expires>?',(device,now+540)).fetchone()[0]
+            if recent >= 120: raise Denied('RATE_LIMIT',429)
             try:
                 db.execute('INSERT INTO nonces VALUES(?,?,?)',(device,nonce,now+600))
             except sqlite3.IntegrityError:
@@ -101,10 +108,10 @@ def digest(value):
     return hashlib.sha256(value).hexdigest()
 
 
-def create_app(store):
+def create_app(store, database=None):
     from flask import Flask, request, jsonify
     app = Flask(__name__)
-    app.config['MAX_CONTENT_LENGTH'] = 4096
+    app.config['MAX_CONTENT_LENGTH'] = 32768
 
     @app.get('/health')
     def health():
@@ -120,6 +127,29 @@ def create_app(store):
         except Denied as error:
             return jsonify({'error':error.code}), error.status
 
+    @app.post('/v1/info')
+    @app.post('/v1/analyze')
+    def protected_data():
+        body=request.get_json(silent=True) or {}
+        action=request.path.rsplit('/',1)[-1]
+        payload=body.get('payload') if isinstance(body,dict) else None
+        if not isinstance(payload,str) or len(payload)>24000:
+            return jsonify({'error':'INVALID_REQUEST'}),400
+        try:
+            permit=store.activate(body,action=action,payload=payload)
+            if database is None: raise Denied('DATABASE_UNAVAILABLE',503)
+            snapshot=database.get()
+            decoded=json.loads(payload)
+            if not isinstance(decoded,dict): raise ValueError('Object required')
+            result=snapshot.info() if action=='info' else snapshot.analyze(decoded)
+            return jsonify({**result,'nonce':permit['nonce']}),200,{'Cache-Control':'no-store'}
+        except Denied as error:
+            return jsonify({'error':error.code}),error.status
+        except (ValueError,TypeError,KeyError):
+            return jsonify({'error':'INVALID_REQUEST'}),400
+        except OSError:
+            return jsonify({'error':'DATABASE_UNAVAILABLE'}),503
+
     return app
 
 
@@ -127,7 +157,9 @@ def production():
     path = Path(os.environ.get('LICENSE_DB', '/data/licenses.sqlite'))
     path.parent.mkdir(parents=True, exist_ok=True)
     os.umask(0o077)
-    return create_app(Store(path))
+    from database import Database
+    database=Database(path.parent/'database.json.gz',Path(__file__).parent/'seed')
+    return create_app(Store(path),database)
 
 
 if __name__ == '__main__':

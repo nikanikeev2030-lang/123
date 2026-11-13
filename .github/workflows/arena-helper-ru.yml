@@ -14,6 +14,8 @@ jobs:
         api: [30, 35]
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    env:
+      ORG_GRADLE_PROJECT_LICENSE_URL: ${{ vars.LICENSE_URL }}
     defaults:
       run:
         working-directory: arena-helper-next
@@ -37,6 +39,11 @@ jobs:
           python3 -m pip install -r license-server/requirements.txt
           cd license-server
           python3 -m unittest -v
+      - name: Start isolated license server for Android integration
+        run: |
+          python3 license-server/serve_ci.py > /tmp/arena-ci-server.log 2>&1 &
+          for attempt in $(seq 1 30); do curl -fsS http://127.0.0.1:8765/health && break; sleep 1; done
+          test -s ci-license.txt
       - name: Tests, Android Lint and APK
         run: gradle --no-daemon testDebugUnitTest lintDebug assembleDebug
       - name: Verify installable APK
@@ -60,7 +67,8 @@ jobs:
           disable-animations: true
           working-directory: arena-helper-next
           script: |
-            gradle --no-daemon connectedDebugAndroidTest
+            adb reverse tcp:8765 tcp:8765
+            gradle --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.serverLicense="$(cat ci-license.txt)"
             adb install -r app/build/outputs/apk/debug/app-debug.apk
             adb shell settings put system accelerometer_rotation 0
             adb shell settings put system user_rotation 0

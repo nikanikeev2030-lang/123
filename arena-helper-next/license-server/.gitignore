@@ -1,0 +1,5 @@
+__pycache__/
+*.sqlite
+*.sqlite-*
+database.json.gz
+.env

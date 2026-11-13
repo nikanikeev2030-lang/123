@@ -87,7 +87,7 @@ class LicenseTests(unittest.TestCase):
         client=create_app(self.store).test_client()
         self.assertEqual(client.get('/health').status_code,200)
         self.assertEqual(client.post('/v1/activate',json={}).status_code,400)
-        self.assertEqual(client.post('/v1/activate',data='x'*5000,content_type='application/json').status_code,413)
+        self.assertEqual(client.post('/v1/activate',data='x'*40000,content_type='application/json').status_code,413)
 
 
 if __name__=='__main__': unittest.main()

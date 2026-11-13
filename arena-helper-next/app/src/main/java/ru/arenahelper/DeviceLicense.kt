@@ -39,17 +39,18 @@ object DeviceLicense {
         return store
     }
 
-    internal fun proof(key: String): JSONObject {
+    internal fun proof(key: String, action: String = "activate", payload: String = ""): JSONObject {
         val store=keys()
         val publicBytes=store.getCertificate(ALIAS).publicKey.encoded
         val nonce=UUID.randomUUID().toString().replace("-","")
         val stamp=System.currentTimeMillis()/1000
-        val body="arena-license-v1\n${hash(key.toByteArray())}\n${hash(publicBytes)}\n$stamp\n$nonce"
+        val tail="${hash(key.toByteArray())}\n${hash(publicBytes)}\n$stamp\n$nonce"
+        val body=if(action=="activate") "arena-license-v1\n$tail" else "arena-license-v2\n$action\n${hash(payload.toByteArray())}\n$tail"
         val signature=Signature.getInstance("SHA256withECDSA").run {
             initSign(store.getKey(ALIAS,null) as PrivateKey);update(body.toByteArray());sign()
         }
         return JSONObject().put("license",key).put("publicKey",Base64.encodeToString(publicBytes,flags))
-            .put("timestamp",stamp).put("nonce",nonce).put("signature",Base64.encodeToString(signature,flags))
+            .put("timestamp",stamp).put("nonce",nonce).put("signature",Base64.encodeToString(signature,flags)).put("payload",payload)
     }
 
     @JvmStatic @Synchronized fun refresh(context: Context): String = activate(context,savedKey(context))
@@ -106,6 +107,31 @@ object DeviceLicense {
         } catch(_: Exception) {
             "Не удалось проверить лицензию. Проверьте интернет и повторите попытку."
         } finally {connection?.disconnect()}
+    }
+
+    internal fun request(context: Context, action: String, data: JSONObject): JSONObject =
+        requestAt(context,action,data,BuildConfig.LICENSE_URL)
+
+    internal fun requestAt(context: Context, action: String, data: JSONObject, activationUrl:String): JSONObject {
+        require(action=="info" || action=="analyze")
+        check(isValid()) {"Требуется активация лицензии"}
+        check(activationUrl.isNotBlank()) {"Сервер не настроен"}
+        val url=URL(activationUrl.removeSuffix("/activate")+"/"+action)
+        require(url.protocol=="https" || (BuildConfig.DEBUG && url.protocol=="http" && url.host=="127.0.0.1"))
+        val proof=proof(savedKey(context),action,data.toString())
+        val conn=url.openConnection() as HttpURLConnection
+        try {
+            conn.requestMethod="POST";conn.connectTimeout=4000;conn.readTimeout=5000;conn.doOutput=true
+            conn.instanceFollowRedirects=false;conn.setRequestProperty("Content-Type","application/json")
+            val raw=proof.toString().toByteArray();conn.setFixedLengthStreamingMode(raw.size)
+            conn.outputStream.use {it.write(raw)}
+            val status=conn.responseCode
+            if(status==403) {validUntil=0;refreshAfter=0;Catalog.clear()}
+            check(status==200) {if(status==403) "Лицензия отклонена сервером" else "Сервер недоступен ($status)"}
+            val response=conn.inputStream.use {JSONObject(DatabaseUpdater.readLimited(it,65536).toString(Charsets.UTF_8))}
+            check(response.getString("nonce")==proof.getString("nonce")) {"Неверный ответ сервера"}
+            return response
+        } finally {conn.disconnect()}
     }
 
     private fun hash(bytes: ByteArray)=MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
