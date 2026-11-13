@@ -34,6 +34,12 @@ class DataTests(unittest.TestCase):
         cls.seed=seed_snapshot(SEED)
         cls.snapshot=Snapshot(cls.seed)
 
+    def test_all_normal_reprints_match_without_alias_ambiguity(self):
+        for card_id, card in self.snapshot.cards.items():
+            found=self.snapshot.closest([self.seed["art"][card_id]],self.snapshot.card_index)
+            self.assertIsNotNone(found,card_id)
+            self.assertEqual(card["name"],self.snapshot.cards[found["id"]]["name"])
+
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup)
         self.db=Database(Path(self.temp.name)/'database.json.gz',SEED)

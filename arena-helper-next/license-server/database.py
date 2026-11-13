@@ -48,20 +48,21 @@ class Snapshot:
             if special: card_refs.append((card_id,decode(special)))
         hero_refs=[(key.split(':')[0],decode(value)) for key,value in data['portraits'].items()]
         if len(hero_refs)<700 or {k for k,_ in hero_refs}!=set(self.stats): raise ValueError('Incomplete portraits')
-        self.card_index=self.index(card_refs)
+        self.card_index=self.index(card_refs,{key:card["name"] for key,card in self.cards.items()})
         self.hero_index=self.index(hero_refs)
 
     @staticmethod
-    def index(refs):
+    def index(refs, aliases=None):
         names=np.array([k for k,_ in refs])
         matrix=np.stack([v for _,v in refs])
         means=matrix.reshape(-1,80,3).mean(axis=1).astype(np.int16)
-        return names,matrix,means
+        groups=np.array([aliases.get(k,k) if aliases else k for k,_ in refs])
+        return names,matrix,means,groups
 
     @staticmethod
     def closest(encoded,index,animated=False):
         if type(encoded)!=list or not 1<=len(encoded)<=9: raise ValueError('Invalid candidate count')
-        names,matrix,means=index
+        names,matrix,means,groups=index
         distances=np.full(len(names),2**30,dtype=np.int64)
         for value in encoded:
             q=decode(value)
@@ -76,7 +77,7 @@ class Snapshot:
             distances=np.minimum(distances,errors)
         best=int(distances.argmin()); error=float(distances[best])/240
         if error>(27 if animated else 26): return None
-        name=str(names[best]);others=distances[names!=name]
+        name=str(names[best]);others=distances[groups!=groups[best]]
         if len(others) and float(others.min())/240-error<(5 if animated else 4): return None
         return {'id':name,'confidence':1-error/160}
 
