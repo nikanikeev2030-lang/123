@@ -12,7 +12,7 @@ jobs:
       fail-fast: false
       matrix:
         api: [30, 35]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
       ORG_GRADLE_PROJECT_LICENSE_URL: ${{ vars.LICENSE_URL }}
@@ -25,6 +25,9 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - uses: android-actions/setup-android@v3
         with:
           packages: platform-tools
