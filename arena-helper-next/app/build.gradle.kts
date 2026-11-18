@@ -7,8 +7,8 @@ android {
   applicationId = "ru.arenahelper"
   minSdk = 30
   targetSdk = 35
-  versionCode = 30
-  versionName = "1.4.0"
+  versionCode = 31
+  versionName = "1.4.1"
   val licenseUrl = providers.gradleProperty("LICENSE_URL").orElse("").get()
   require(licenseUrl.isEmpty() || Regex("https://[A-Za-z0-9.-]+(?::[0-9]+)?/v1/activate").matches(licenseUrl)) { "LICENSE_URL must be an HTTPS activation URL" }
   buildConfigField("String", "LICENSE_URL", "\"$licenseUrl\"")
@@ -25,7 +25,10 @@ android {
    }
   }
  }
- buildTypes { getByName("release") { signingConfig = signingConfigs.getByName("commercial") } }
+ buildTypes { getByName("release") {
+  isDebuggable = false
+  signingConfig = if (providers.gradleProperty("OFFLINE_SIGNING").orNull == "true") null else signingConfigs.getByName("commercial")
+ } }
  compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
  kotlinOptions { jvmTarget = "17" }
 }
@@ -38,6 +41,6 @@ dependencies {
 
 tasks.matching { it.name == "assembleRelease" || it.name == "bundleRelease" }.configureEach {
  doFirst {
- require(!System.getenv("ARENA_KEYSTORE").isNullOrBlank()) { "Configure permanent release signing key" }
+ require(providers.gradleProperty("OFFLINE_SIGNING").orNull == "true" || !System.getenv("ARENA_KEYSTORE").isNullOrBlank()) { "Configure permanent release signing key" }
  require(providers.gradleProperty("LICENSE_URL").orNull?.startsWith("https://") == true) { "Configure LICENSE_URL before a commercial release" } }
 }

@@ -1,0 +1,70 @@
+name: Android release for signing on VPS
+on:
+  push:
+    branches: [arena-helper-ru]
+    paths:
+      - '.github/workflows/arena-android-release.yml'
+      - 'arena-helper-next/app/**'
+      - 'arena-helper-next/tools/**'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: arena-helper-next
+    env:
+      ORG_GRADLE_PROJECT_LICENSE_URL: https://45-91-53-108.sslip.io/v1/activate
+      ORG_GRADLE_PROJECT_OFFLINE_SIGNING: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+      - name: Install Android SDK
+        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Test and build release without transferring private key
+        run: gradle --no-daemon testReleaseUnitTest lintRelease assembleRelease
+      - name: Verify and package for offline signing
+        run: |
+          mkdir -p release-package
+          cp app/build/outputs/apk/release/app-release-unsigned.apk release-package/Arena-Android-1.4.1-unsigned.apk
+          python3 tools/verify_apk.py release-package/Arena-Android-1.4.1-unsigned.apk
+          "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -P 16 -v 4 release-package/Arena-Android-1.4.1-unsigned.apk
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging release-package/Arena-Android-1.4.1-unsigned.apk > release-package/package-info.txt
+          python3 - <<'PYTEST'
+          from pathlib import Path
+          import zipfile
+          info=Path('release-package/package-info.txt').read_text()
+          assert 'application-debuggable' not in info
+          assert "versionName='1.4.1'" in info
+          with zipfile.ZipFile('release-package/Arena-Android-1.4.1-unsigned.apk') as z:
+              dex=b''.join(z.read(n) for n in z.namelist() if n.endswith('.dex'))
+              assert b'https://45-91-53-108.sslip.io/v1/activate' in dex
+          PYTEST
+          cp tools/sign-apk.sh release-package/
+          cd release-package
+          sha256sum Arena-Android-1.4.1-unsigned.apk > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Arena-Android-1.4.1-signing-package
+          path: arena-helper-next/release-package/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Android-release-verification
+          path: |
+            arena-helper-next/app/build/reports/tests/
+            arena-helper-next/app/build/reports/lint-results-release.*
