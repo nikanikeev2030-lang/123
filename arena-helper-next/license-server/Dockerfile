@@ -4,6 +4,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt && useradd -u 10001 app && mkdir /data && chown app:app /data
 COPY *.py ./
 COPY seed ./seed
+RUN chmod -R a+rX /app
 USER app
 ENV LICENSE_DB=/data/licenses.sqlite
 EXPOSE 8000

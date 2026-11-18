@@ -1,4 +1,6 @@
 """Single-device licensing. Deploy behind HTTPS; never expose the database/admin CLI."""
+import calendar
+from datetime import datetime, timezone
 import base64
 import hashlib
 import json
@@ -13,6 +15,18 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 
 LEASE_SECONDS = 900
+TERMS = {'7d': '7 дней', '1m': '1 месяц', '3m': '3 месяца', '6m': '6 месяцев'}
+
+
+def term_end(start, term):
+    if term not in TERMS: raise ValueError('Invalid license term')
+    if term == '7d': return start + 7 * 86400
+    date = datetime.fromtimestamp(start, timezone.utc)
+    month = date.year * 12 + date.month - 1 + int(term[:-1])
+    year, month = month // 12, month % 12 + 1
+    return int(date.replace(year=year, month=month,
+        day=min(date.day, calendar.monthrange(year, month)[1])).timestamp())
+
 
 
 class Denied(Exception):
@@ -28,6 +42,9 @@ class Store:
                 CREATE TABLE IF NOT EXISTS licenses(
                     hash TEXT PRIMARY KEY, label TEXT NOT NULL, device TEXT,
                     revoked INTEGER NOT NULL DEFAULT 0, lease_until INTEGER NOT NULL DEFAULT 0);
+                CREATE TABLE IF NOT EXISTS license_terms(
+                    hash TEXT PRIMARY KEY, term TEXT NOT NULL,
+                    activated_at INTEGER, expires_at INTEGER);
                 CREATE TABLE IF NOT EXISTS nonces(
                     device TEXT, nonce TEXT, expires INTEGER,
                     PRIMARY KEY(device, nonce));
@@ -38,10 +55,13 @@ class Store:
         db.execute('PRAGMA busy_timeout=15000')
         return db
 
-    def issue(self, label):
+    def issue(self, label, term=None):
+        if term is not None and term not in TERMS: raise ValueError("Invalid license term")
         key = 'AH-' + secrets.token_hex(24).upper()
         with self.connect() as db:
             db.execute('INSERT INTO licenses(hash,label) VALUES(?,?)', (digest(key.encode()), label))
+            if term is not None:
+                db.execute('INSERT INTO license_terms(hash,term) VALUES(?,?)',(digest(key.encode()),term))
         return key
 
     def revoke(self, key):
@@ -93,6 +113,16 @@ class Store:
                 raise Denied('ACTIVATION_REQUIRED')
             if row[0] is not None and row[0] != device:
                 raise Denied('OTHER_DEVICE')
+            term_row = db.execute('SELECT term,activated_at,expires_at FROM license_terms WHERE hash=?',(key_hash,)).fetchone()
+            expires = None
+            if term_row:
+                expires = term_row[2]
+                if expires is not None and now >= expires: raise Denied('LICENSE_EXPIRED')
+                if term_row[1] is None:
+                    expires = term_end(now, term_row[0])
+                    db.execute('UPDATE license_terms SET activated_at=?,expires_at=? WHERE hash=?',(now,expires,key_hash))
+            # Existing APKs require >=60s; protected requests still expire exactly on time.
+            lease = min(LEASE_SECONDS, max(60, expires-now)) if expires is not None else LEASE_SECONDS
             db.execute('DELETE FROM nonces WHERE expires < ?', (now,))
             recent=db.execute('SELECT count(*) FROM nonces WHERE device=? AND expires>?',(device,now+540)).fetchone()[0]
             if recent >= 120: raise Denied('RATE_LIMIT',429)
@@ -100,8 +130,8 @@ class Store:
                 db.execute('INSERT INTO nonces VALUES(?,?,?)',(device,nonce,now+600))
             except sqlite3.IntegrityError:
                 raise Denied('REPLAY',409) from None
-            db.execute('UPDATE licenses SET device=?,lease_until=? WHERE hash=?',(device,now+LEASE_SECONDS,key_hash))
-        return {'device':device,'leaseSeconds':LEASE_SECONDS,'nonce':nonce}
+            db.execute('UPDATE licenses SET device=?,lease_until=? WHERE hash=?',(device,min(now+lease,expires) if expires is not None else now+lease,key_hash))
+        return {'device':device,'leaseSeconds':lease,'nonce':nonce}
 
 
 def digest(value):
@@ -170,12 +200,13 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Admin CLI; run only on the server.')
     parser.add_argument('command', choices=['issue','revoke','reset'])
     parser.add_argument('--label', default='Buyer')
+    parser.add_argument('--term', choices=TERMS)
     parser.add_argument('--db', default=os.environ.get('LICENSE_DB','/data/licenses.sqlite'))
     args = parser.parse_args()
     os.umask(0o077)
     store = Store(args.db)
     if args.command == 'issue':
-        print(store.issue(args.label))
+        print(store.issue(args.label,args.term))
     else:
         key = getpass.getpass('License key: ').strip().upper()
         getattr(store,args.command)(key)

@@ -24,6 +24,7 @@ class AdminTests(unittest.TestCase):
 
     def post(self,action,response=None,client=None,**data):
         client=client or self.client
+        if action=='issue': data.setdefault('term','1m')
         response=response or self.get(client)
         return client.post('/admin',base_url='https://localhost',data={'csrf':self.csrf(response),'action':action,**data})
 

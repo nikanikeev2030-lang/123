@@ -13,7 +13,11 @@ with tempfile.TemporaryDirectory() as d:
    context=browser.new_context(ignore_https_errors=True,viewport={'width':1280,'height':900},permissions=['clipboard-read','clipboard-write'])
    page=context.new_page();page.goto('https://127.0.0.1:8899/admin')
    page.get_by_label('Пароль панели').fill('temporary-test-password');page.get_by_role('button',name='Войти',exact=True).click()
+   assert page.get_by_label('Срок лицензии').locator('option').count()==4
+   page.get_by_label('Срок лицензии').select_option('7d')
    page.get_by_label('Покупатель или номер заказа').fill('Заказ 1001');page.get_by_role('button',name='Создать ключ').click()
+   assert '7 дней' in page.locator('tbody').inner_text()
+   assert 'Ожидает первой активации' in page.locator('tbody').inner_text()
    assert page.locator('#key').input_value().startswith('AH-')
    page.get_by_role('button',name='Скопировать ключ').click()
    page.get_by_role('button',name='Скопировано',exact=True).wait_for()
