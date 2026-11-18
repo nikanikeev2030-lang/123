@@ -49,6 +49,7 @@ public final class CaptureService extends Service {
     private View calibration;
     private DraftCatalog catalog;
     private LinearLayout controls;
+    private Button heroesButton;
     private volatile int deckCount;
     private TextView deckLabel;
     private VirtualDisplay display;
@@ -562,6 +563,11 @@ public final class CaptureService extends Service {
     }
 
     private void openHeroes() {
+        if (heroSelection.getActive()) {
+            heroSelection.clear();
+            renderCards(new ArrayList<>(currentMatches));
+            return;
+        }
         if (deckCount > 0) { showHeroPicker(-1); return; }
         heroSelection.begin();
         renderHeroes(new ArrayList<>(currentHeroes),activeHeroKey);
@@ -654,7 +660,7 @@ public final class CaptureService extends Service {
                 CaptureService.this.m1507lambda$8$ruarenahelperCaptureService(buttonControl, view);
             }
         });
-        Button heroesButton = control(this.controls, "Герои");
+        heroesButton = control(this.controls, "Герои");
         heroesButton.setContentDescription("Сравнить классы независимо от скина");
         heroesButton.setOnClickListener(v -> openHeroes());
         for (int slot=0;slot<cells.size();slot++) {
@@ -812,6 +818,7 @@ public final class CaptureService extends Service {
         ArrayList<DraftCatalog.ClassStat> resolved = new ArrayList<>();
         for (String id : heroSelection.resolve(ids)) resolved.add(id == null ? null : catalog.stat(id));
         list = resolved;
+        if (heroesButton != null) heroesButton.setText(heroSelection.getActive() ? "Карты" : "Герои");
         if (!this.heroMode) {
             resetDeck();
             this.heroMode = true;
@@ -849,6 +856,7 @@ public final class CaptureService extends Service {
         DraftCatalog.PackageInfo packageInfoPackageFor;
         int i = 0;
         heroSelection.clear();
+        if (heroesButton != null) heroesButton.setText("Герои");
         this.heroMode = false;
         this.activeHeroKey = "";
         this.currentHeroes.clear();
