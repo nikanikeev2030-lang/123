@@ -3,3 +3,5 @@ __pycache__/
 *.sqlite-*
 database.json.gz
 .env
+admin.json
+admin.key

@@ -1,0 +1,37 @@
+name: Android license dashboard checks
+on:
+  push:
+    branches: [arena-helper-ru]
+    paths:
+      - 'arena-helper-next/license-server/**'
+      - '.github/workflows/arena-admin.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  admin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: arena-helper-next/license-server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt playwright==1.56.0
+          python -m playwright install --with-deps chromium
+      - name: Test licenses, authentication, transfers and existing API
+        run: python -m unittest -v
+      - name: Check desktop and mobile dashboard in Chromium
+        run: python browser_check.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Android-dashboard-previews
+          path: |
+            arena-helper-next/license-server/admin-desktop.png
+            arena-helper-next/license-server/admin-mobile.png

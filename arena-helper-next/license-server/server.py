@@ -150,6 +150,8 @@ def create_app(store, database=None):
         except OSError:
             return jsonify({'error':'DATABASE_UNAVAILABLE'}),503
 
+    from admin_panel import register_admin
+    register_admin(app,store)
     return app
 
 
