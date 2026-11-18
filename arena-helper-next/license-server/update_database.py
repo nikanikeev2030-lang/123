@@ -1,5 +1,6 @@
 """Run on the server only. Validated, atomic rotation updates; old snapshot survives failures."""
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import base64
 import copy
 import datetime
@@ -65,6 +66,33 @@ def fingerprint(raw):
     return base64.b64encode(bytes(cells)).decode()
 
 
+
+def refresh_portraits(result, metadata, loader=fetch):
+    """Discover full HERO IDs (including suffixes), keep working references on errors."""
+    classes={key.replace('-', '').upper():key for key in KEYS}
+    missing=[]
+    for card in metadata.values():
+        ident=card.get('id','');cls=classes.get(card.get('cardClass',''))
+        if card.get('type')!='HERO' or not cls or not re.fullmatch(r'HERO_[A-Za-z0-9_]+',ident): continue
+        key=cls+':'+ident
+        if key not in result['portraits']: missing.append((key,ident))
+    def download(item):
+        key,ident=item
+        try:
+            value=fingerprint(loader(f'https://art.hearthstonejson.com/v1/render/latest/enUS/256x/{ident}.png',1024*1024))
+            return key,value
+        except Exception as error:
+            logging.warning('Hero reference unavailable %s: %s',ident,type(error).__name__)
+            return key,None
+    added=0
+    # Bound work per update; failures are retried next time without removing old skins.
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        for key,value in pool.map(download,missing[:160]):
+            if value is not None: result['portraits'][key]=value;added+=1
+    result['portraitCount']=len(result['portraits'])
+    result['portraitPending']=len(missing)-added
+    return added
+
 def refresh(database):
     previous=database.get().data;result=copy.deepcopy(previous)
     ratings=parse_scores(fetch('https://www.heartharena.com/en/tierlist',4*1024*1024))
@@ -74,6 +102,8 @@ def refresh(database):
     source=f'https://api.hearthstonejson.com/v1/{build[1]}/ruRU/cards.json'
     metadata={c['id']:c for c in json.loads(fetch(source))}
     warnings=[];ids=set(ratings)
+    refresh_portraits(result,metadata)
+    if result['portraitPending']: warnings.append('Не все новые портреты доступны у источника')
     packages=[]
     try:
         groups=regular(json.loads(fetch(GROUPS)))['data']['ALL']

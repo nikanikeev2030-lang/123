@@ -101,6 +101,10 @@ class RegressionTest {
    }
    assertNotNull("System projection consent",consent);consent!!.click()
    assertTrue("Overlay counter appears",device.wait(androidx.test.uiautomator.Until.hasObject(androidx.test.uiautomator.By.text("0/30")),15000))
+   val heroes=device.wait(androidx.test.uiautomator.Until.findObject(androidx.test.uiautomator.By.desc("Сравнить классы независимо от скина")),5000)
+   assertNotNull("Skin-independent hero control",heroes)
+   heroes.click()
+   assertTrue("Unknown hero offers manual class selection",device.wait(androidx.test.uiautomator.Until.hasObject(androidx.test.uiautomator.By.textContains("Указать класс")),3000))
    assertTrue("Projection foreground service running",device.executeShellCommand("dumpsys activity services ru.arenahelper").contains("CaptureService"))
   }finally{ctx.stopService(Intent(ctx,CaptureService::class.java));device.unfreezeRotation()}
  }

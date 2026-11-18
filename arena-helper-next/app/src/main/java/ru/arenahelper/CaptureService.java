@@ -55,6 +55,7 @@ public final class CaptureService extends Service {
     private volatile int generation;
     private int height;
     private boolean heroMode;
+    private final HeroSelection heroSelection = new HeroSelection();
     private long lastFrame;
     private long lastMotionFrame;
     private long lastTap;
@@ -298,7 +299,7 @@ public final class CaptureService extends Service {
         for (Match match : arrayList) {
             arrayList2.add(match == null ? "?" : match.getCard().getName());
         }
-        final boolean z2 = !listRecognize.isEmpty();
+        final boolean z2 = !listRecognize.isEmpty() && (listRecognize.stream().filter(h -> h != null).count() >= 2 || (deckCount == 0 && hasGameFrame(bitmap)));
         if (z2) {
             sb = new StringBuilder("hero:");
             Iterator<DraftCatalog.ClassStat> it2 = listRecognize.iterator();
@@ -355,7 +356,10 @@ public final class CaptureService extends Service {
         if (i != this.generation || this.stopped) {
             return;
         }
-        if (z) {
+        long recognized = list2.stream().filter(item -> item != null).count();
+        if (heroSelection.getActive() && recognized < 2) {
+            renderHeroes(z ? list : Collections.emptyList(), str);
+        } else if (z) {
             renderHeroes(list, str);
         } else {
             renderCards(list2);
@@ -528,6 +532,42 @@ public final class CaptureService extends Service {
         return layoutParams;
     }
 
+    private void showHeroPicker(int slot) {
+        if (catalog == null || stopped) return;
+        ArrayList<DraftCatalog.ClassStat> options = new ArrayList<>(catalog.classStats());
+        options.sort((a,b) -> Double.compare(b.winRate,a.winRate));
+        if (options.isEmpty()) {
+            Toast.makeText(this,"Нет статистики сервера. Проверьте интернет и лицензию.",Toast.LENGTH_LONG).show();
+            return;
+        }
+        String[] labels = new String[options.size()];
+        for (int n=0;n<labels.length;n++) {
+            DraftCatalog.ClassStat h=options.get(n);
+            labels[n]=h.label+" — "+percent(h.winRate)+(h.cached ? " • кэш" : "");
+        }
+        android.app.AlertDialog dialog = new android.app.AlertDialog.Builder(this)
+            .setTitle(slot < 0 ? "Рейтинги всех классов" : "Класс героя "+(slot+1)+" (слева направо)")
+            .setItems(labels,(d,index) -> {
+                DraftCatalog.ClassStat chosen=options.get(index);
+                if (slot < 0) {
+                    currentClass=chosen.id; prefs.edit().putString("class",currentClass).apply();
+                    Toast.makeText(this,"Выбран класс: "+chosen.label,Toast.LENGTH_SHORT).show();
+                } else {
+                    heroSelection.set(slot,chosen.id);
+                    renderHeroes(new ArrayList<>(currentHeroes),activeHeroKey);
+                }
+            }).setNegativeButton("Отмена",null).create();
+        dialog.getWindow().setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY);
+        dialog.show();
+    }
+
+    private void openHeroes() {
+        if (deckCount > 0) { showHeroPicker(-1); return; }
+        heroSelection.begin();
+        renderHeroes(new ArrayList<>(currentHeroes),activeHeroKey);
+        Toast.makeText(this,"Нажмите на нераспознанный класс. Удержание — исправить класс.",Toast.LENGTH_LONG).show();
+    }
+
     private void showDraftTools() {
         ArrayList<String> labels = new ArrayList<>();
         labels.add("Указать число карт в колоде");
@@ -614,6 +654,16 @@ public final class CaptureService extends Service {
                 CaptureService.this.m1507lambda$8$ruarenahelperCaptureService(buttonControl, view);
             }
         });
+        Button heroesButton = control(this.controls, "Герои");
+        heroesButton.setContentDescription("Сравнить классы независимо от скина");
+        heroesButton.setOnClickListener(v -> openHeroes());
+        for (int slot=0;slot<cells.size();slot++) {
+            final int selectedSlot=slot;
+            cells.get(slot).setOnLongClickListener(v -> {
+                if (!heroMode) return false;
+                showHeroPicker(selectedSlot); return true;
+            });
+        }
         Button buttonControl2 = control(this.controls, "↺");
         buttonControl2.setContentDescription("Новый драфт");
         buttonControl2.setOnClickListener(new View.OnClickListener() { // from class: ru.arenahelper.CaptureService$$ExternalSyntheticLambda5
@@ -648,6 +698,7 @@ public final class CaptureService extends Service {
 
     
      void m1494lambda$10$ruarenahelperCaptureService(View view) {
+        heroSelection.clear();
         resetDeck();
         if (this.currentMatches.isEmpty()) {
             this.status.setText("Новый драфт • колода 0/30");
@@ -756,6 +807,11 @@ public final class CaptureService extends Service {
     }
 
     private void renderHeroes(List<DraftCatalog.ClassStat> list, String str) {
+        ArrayList<String> ids = new ArrayList<>();
+        for (DraftCatalog.ClassStat h : list) ids.add(h == null ? null : h.id);
+        ArrayList<DraftCatalog.ClassStat> resolved = new ArrayList<>();
+        for (String id : heroSelection.resolve(ids)) resolved.add(id == null ? null : catalog.stat(id));
+        list = resolved;
         if (!this.heroMode) {
             resetDeck();
             this.heroMode = true;
@@ -770,7 +826,9 @@ public final class CaptureService extends Service {
                 classStat = classStat2;
             }
         }
-        this.status.setText("Лучший: " + classStat.label + " " + percent(classStat.winRate) + " • выберите класс");
+        long known=list.stream().filter(h -> h != null).count();
+        this.status.setText(classStat == null ? "Укажите классы героев нажатием на панели" :
+            (known == 3 ? "Лучший: " : "Среди распознанных: ") + classStat.label + " " + percent(classStat.winRate));
         for (int i = 0; i < 3; i++) {
             TextView textView = this.cells.get(i);
             if (i < list.size() && list.get(i) != null) {
@@ -779,9 +837,9 @@ public final class CaptureService extends Service {
                 textView.setBackgroundColor(classStat3 == classStat ? -15246528 : -14930883);
                 textView.setEnabled(true);
             } else {
-                textView.setText(String.valueOf(i + 1) + ". Класс не распознан");
+                textView.setText(String.valueOf(i + 1) + ". Указать класс\nНажмите здесь");
                 textView.setBackgroundColor(-13425878);
-                textView.setEnabled(false);
+                textView.setEnabled(true);
             }
         }
         syncPanelHeight();
@@ -790,6 +848,7 @@ public final class CaptureService extends Service {
     private void renderCards(List<Match> list) {
         DraftCatalog.PackageInfo packageInfoPackageFor;
         int i = 0;
+        heroSelection.clear();
         this.heroMode = false;
         this.activeHeroKey = "";
         this.currentHeroes.clear();
@@ -831,7 +890,7 @@ public final class CaptureService extends Service {
             if ((i5 < list.size() ? list.get(i5) : null) == null || detailsArr[i5] == null) {
                 textView.setText(String.valueOf(i5 + 1) + ". Не распознано\nНет оценки");
                 textView.setBackgroundColor(-13425878);
-                textView.setEnabled(false);
+                textView.setEnabled(true);
             } else {
                 DraftCatalog.Details details2 = detailsArr[i5];
                 StringBuilder sb = new StringBuilder();
@@ -891,7 +950,7 @@ public final class CaptureService extends Service {
                 return;
             }
             DraftCatalog.ClassStat classStat = this.currentHeroes.get(i);
-            if (classStat == null) return;
+            if (classStat == null) { showHeroPicker(i); return; }
             this.currentClass = classStat.id;
             this.prefs.edit().putString("class", classStat.id).apply();
             resetDeck();

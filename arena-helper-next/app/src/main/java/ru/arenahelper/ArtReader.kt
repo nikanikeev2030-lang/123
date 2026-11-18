@@ -39,7 +39,7 @@ class ArtReader @JvmOverloads constructor(private val context:Context,private va
   matches=(0..2).map {i->found.optJSONObject(i)?.let {Match(Card(names.getValue(it.getString("id")),null),it.getDouble("confidence"))}}
   val hs=result.getJSONArray("heroes");require(hs.length()==3)
   val values=(0..2).map {i->hs.optJSONObject(i)?.let {catalog.stat(it.getString("id"))}}
-  heroes=if(values.count {it!=null}>=2) values else emptyList()
+  heroes=if(values.any {it!=null}) values else emptyList()
  }
  private fun queries(image:Bitmap,boxes:List<RectF>):JSONArray=JSONArray().apply {
   for(box in boxes) put(Base64.encodeToString(fingerprint(image,box) ?: ByteArray(240),Base64.NO_WRAP))

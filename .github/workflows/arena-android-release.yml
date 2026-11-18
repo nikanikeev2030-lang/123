@@ -39,26 +39,26 @@ jobs:
       - name: Verify and package for offline signing
         run: |
           mkdir -p release-package
-          cp app/build/outputs/apk/release/app-release-unsigned.apk release-package/Arena-Android-1.4.1-unsigned.apk
-          python3 tools/verify_apk.py release-package/Arena-Android-1.4.1-unsigned.apk
-          "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -P 16 -v 4 release-package/Arena-Android-1.4.1-unsigned.apk
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging release-package/Arena-Android-1.4.1-unsigned.apk > release-package/package-info.txt
+          cp app/build/outputs/apk/release/app-release-unsigned.apk release-package/Arena-Android-1.4.2-unsigned.apk
+          python3 tools/verify_apk.py release-package/Arena-Android-1.4.2-unsigned.apk
+          "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -P 16 -v 4 release-package/Arena-Android-1.4.2-unsigned.apk
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging release-package/Arena-Android-1.4.2-unsigned.apk > release-package/package-info.txt
           python3 - <<'PYTEST'
           from pathlib import Path
           import zipfile
           info=Path('release-package/package-info.txt').read_text()
           assert 'application-debuggable' not in info
-          assert "versionName='1.4.1'" in info
-          with zipfile.ZipFile('release-package/Arena-Android-1.4.1-unsigned.apk') as z:
+          assert "versionName='1.4.2'" in info
+          with zipfile.ZipFile('release-package/Arena-Android-1.4.2-unsigned.apk') as z:
               dex=b''.join(z.read(n) for n in z.namelist() if n.endswith('.dex'))
               assert b'https://45-91-53-108.sslip.io/v1/activate' in dex
           PYTEST
           cp tools/sign-apk.sh release-package/
           cd release-package
-          sha256sum Arena-Android-1.4.1-unsigned.apk > SHA256SUMS
+          sha256sum Arena-Android-1.4.2-unsigned.apk > SHA256SUMS
       - uses: actions/upload-artifact@v4
         with:
-          name: Arena-Android-1.4.1-signing-package
+          name: Arena-Android-1.4.2-signing-package
           path: arena-helper-next/release-package/
           if-no-files-found: error
       - uses: actions/upload-artifact@v4

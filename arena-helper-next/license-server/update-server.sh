@@ -11,5 +11,5 @@ with sqlite3.connect(path) as source, sqlite3.connect(backup) as target:
     source.backup(target)
 print('License backup saved:',backup)
 PY
-docker compose -p arena-android up -d --build --no-deps api
+docker compose -p arena-android up -d --build --no-deps api updater
 echo 'Server updated. Open https://45-91-53-108.sslip.io/admin'

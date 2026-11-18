@@ -101,7 +101,7 @@ class Snapshot:
         hero_matches=[None]*3
         if sum(m is not None for m in matches)<2:
             hero_matches=[self.closest(queries,self.hero_index) for queries in heroes]
-            if sum(h is not None for h in hero_matches)<2: hero_matches=[None]*3
+            # Preserve partial results; client decides when it is a hero screen.
         return {'matches':matches,'heroes':hero_matches,'cards':details,'packages':packages,**self.info()}
 
 
